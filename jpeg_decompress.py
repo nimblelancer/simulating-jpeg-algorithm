@@ -6,7 +6,7 @@ from core.color_processing.color_transform import ycbcr_to_rgb
 from core.color_processing.subsampling import apply_chroma_upsampling
 from core.dct.block_processing import merge_blocks
 from core.dct.dct import apply_idct_to_image
-from core.quantization.dequantization_temp import apply_dequantization, optimize_dequantization_for_speed
+from core.quantization.dequantization_temp import optimize_dequantization_for_speed
 from core.entropy_coding.zigzag_rle import apply_inverse_zigzag_and_rle
 from core.entropy_coding.huffman.huffman_decoder import decode_huffman_from_file
 
