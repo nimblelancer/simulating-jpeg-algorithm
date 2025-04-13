@@ -1,125 +1,220 @@
 import numpy as np
-from collections import Counter, defaultdict
+from collections import Counter
 import heapq
+import json
 
 def build_frequency_table(data):
     """
-    Xây dựng bảng tần suất cho các giá trị trong dữ liệu.
+    Xây dựng bảng tần suất cho DC và AC coefficients.
     
-    Input:
-        data: Mảng 1D chứa dữ liệu cần mã hóa
+    Parameters:
+    -----------
+    data : list
+        List từ apply_zigzag_and_rle: [channel][block] = (dc, ac) hoặc [block] = (dc, ac)
     
-    Output:
-        Dict với key là giá trị và value là tần suất
+    Returns:
+    --------
+    tuple
+        (dc_freq, ac_freq): Dict tần suất cho DC và AC coefficients
     """
-    return Counter(data)
+    if not data or not isinstance(data, list):
+        raise ValueError("Dữ liệu đầu vào phải là list không rỗng")
+    
+    dc_freq = Counter()
+    ac_freq = Counter()
+    
+    if isinstance(data[0], list):  # Ảnh màu
+        for channel in data:
+            for dc, ac in channel:
+                dc_freq[dc] += 1
+                for run, value in ac:
+                    ac_freq[(run, value)] += 1
+    else:  # Ảnh xám
+        for dc, ac in data:
+            dc_freq[dc] += 1
+            for run, value in ac:
+                ac_freq[(run, value)] += 1
+    
+    return dc_freq, ac_freq
 
 def build_huffman_tree(freq_table):
     """
     Xây dựng cây Huffman từ bảng tần suất.
     
-    Input:
-        freq_table: Dict với key là giá trị và value là tần suất
+    Parameters:
+    -----------
+    freq_table : dict
+        Dict với key là giá trị và value là tần suất
     
-    Output:
+    Returns:
+    --------
+    Node
         Node gốc của cây Huffman
+    
+    Raises:
+    -------
+    ValueError
+        Nếu bảng tần suất rỗng
     """
-    # Tạo hàng đợi ưu tiên với các node lá
+    if not freq_table:
+        raise ValueError("Bảng tần suất không được rỗng")
+    
     priority_queue = [Node(value, freq) for value, freq in freq_table.items()]
     heapq.heapify(priority_queue)
     
-    # Xây dựng cây Huffman
     while len(priority_queue) > 1:
-        # Lấy hai node có tần suất thấp nhất
         left = heapq.heappop(priority_queue)
         right = heapq.heappop(priority_queue)
-        
-        # Tạo node cha với tần suất là tổng của hai con
         parent = Node(None, left.freq + right.freq)
         parent.left = left
         parent.right = right
-        
-        # Thêm node cha vào hàng đợi
         heapq.heappush(priority_queue, parent)
     
-    # Trả về node gốc
-    return priority_queue[0] if priority_queue else None
+    return priority_queue[0]
 
 def build_huffman_codes(root):
     """
     Xây dựng mã Huffman từ cây Huffman.
     
-    Input:
-        root: Node gốc của cây Huffman
+    Parameters:
+    -----------
+    root : Node
+        Node gốc của cây Huffman
     
-    Output:
-        Dict với key là giá trị và value là mã Huffman dạng chuỗi '0' và '1'
+    Returns:
+    --------
+    dict
+        Dict với key là giá trị và value là chuỗi bit ('0', '1')
+    
+    Raises:
+    -------
+    ValueError
+        Nếu root rỗng
     """
+    if not root:
+        raise ValueError("Node gốc không được rỗng")
+    
     codes = {}
     
     def traverse(node, code):
         if node:
-            # Nếu là node lá
             if node.value is not None:
-                codes[node.value] = code
-            # Duyệt con trái (thêm bit 0)
+                codes[node.value] = code or "0"  # Đảm bảo mã không rỗng
             traverse(node.left, code + '0')
-            # Duyệt con phải (thêm bit 1)
             traverse(node.right, code + '1')
     
     traverse(root, '')
     return codes
 
-def huffman_encode(data, codes):
+def huffman_encode(data, dc_codes, ac_codes):
     """
-    Mã hóa dữ liệu sử dụng mã Huffman.
+    Mã hóa dữ liệu sử dụng mã Huffman riêng cho DC và AC.
     
-    Input:
-        data: Mảng 1D chứa dữ liệu cần mã hóa
-        codes: Dict với key là giá trị và value là mã Huffman
+    Parameters:
+    -----------
+    data : list
+        List [channel][block] = (dc, ac) hoặc [block] = (dc, ac)
+    dc_codes : dict
+        Bảng mã Huffman cho DC coefficients
+    ac_codes : dict
+        Bảng mã Huffman cho AC coefficients
     
-    Output:
-        Chuỗi bit đã mã hóa và bảng mã để giải mã
+    Returns:
+    --------
+    tuple
+        (encoded_bytes, total_bits): Dữ liệu mã hóa dạng bytes và số bit
     """
-    # Chuyển dữ liệu sang chuỗi bit
-    encoded_data = ''
-    for value in data:
-        encoded_data += codes[value]
+    if not data or not dc_codes or not ac_codes:
+        raise ValueError("Dữ liệu và bảng mã phải không rỗng")
     
-    return encoded_data, codes
+    bitstring = ""
+    if isinstance(data[0], list):  # Ảnh màu
+        for channel in data:
+            for dc, ac in channel:
+                if dc not in dc_codes:
+                    raise ValueError(f"DC value {dc} không có trong bảng mã")
+                bitstring += dc_codes[dc]
+                for run, value in ac:
+                    key = (run, value)
+                    if key not in ac_codes:
+                        raise ValueError(f"AC value {key} không có trong bảng mã")
+                    bitstring += ac_codes[key]
+    else:  # Ảnh xám
+        for dc, ac in data:
+            if dc not in dc_codes:
+                raise ValueError(f"DC value {dc} không có trong bảng mã")
+            bitstring += dc_codes[dc]
+            for run, value in ac:
+                key = (run, value)
+                if key not in ac_codes:
+                    raise ValueError(f"AC value {key} không có trong bảng mã")
+                bitstring += ac_codes[key]
+    
+    # Chuyển bitstring thành bytes
+    byte_array = []
+    for i in range(0, len(bitstring), 8):
+        byte_str = bitstring[i:i+8]
+        if len(byte_str) < 8:
+            byte_str = byte_str + '0' * (8 - len(byte_str))
+        byte_array.append(int(byte_str, 2))
+    
+    return bytes(byte_array), len(bitstring)
 
 def apply_huffman_to_encoded_data(encoded_blocks):
     """
-    Áp dụng mã hóa Huffman cho dữ liệu đã được zigzag + RLE.
+    Áp dụng mã hóa Huffman cho dữ liệu sau zigzag và RLE.
     
-    Input:
-        encoded_blocks: List hoặc mảng 1D các giá trị sau khi zigzag và RLE.
-                        Ví dụ: [0, 5, 0, 3, 2, 0, 0, 1, 7, ...]
+    Parameters:
+    -----------
+    encoded_blocks : list
+        List từ apply_zigzag_and_rle: [channel][block] = (dc, ac) hoặc [block] = (dc, ac)
     
-    Output:
-        dict: {
-            'encoded_data': Dữ liệu Huffman đã mã hóa (bitstring hoặc bytes),
-            'huffman_codes': Bảng mã Huffman (dict: giá trị -> mã bit),
-            'original_length': Độ dài chuỗi đầu vào (phục vụ giải mã)
+    Returns:
+    --------
+    dict
+        {
+            'encoded_data': bytes,
+            'dc_codes': dict,
+            'ac_codes': dict,
+            'shape': tuple (h, w) hoặc (c, h, w),
+            'total_bits': int
         }
+    
+    Raises:
+    -------
+    ValueError
+        Nếu dữ liệu đầu vào không hợp lệ
     """
-    # Bước 1: Xây dựng bảng tần suất
-    freq_table = build_frequency_table(encoded_blocks)
-
-    # Bước 2: Xây dựng cây Huffman
-    huffman_tree = build_huffman_tree(freq_table)
-
-    # Bước 3: Sinh bảng mã Huffman
-    huffman_codes = build_huffman_codes(huffman_tree)
-
-    # Bước 4: Mã hóa dữ liệu
-    encoded_data, original_length = huffman_encode(encoded_blocks, huffman_codes)
-
-    # Trả về kết quả
+    if not encoded_blocks or not isinstance(encoded_blocks, list):
+        raise ValueError("encoded_blocks phải là list không rỗng")
+    
+    # Xác định shape
+    if isinstance(encoded_blocks[0], list):
+        c = len(encoded_blocks)
+        h = w = int((len(encoded_blocks[0]) ** 0.5))
+        shape = (c, h, w)
+    else:
+        h = w = int((len(encoded_blocks) ** 0.5))
+        shape = (h, w)
+    
+    # Bảng tần suất
+    dc_freq, ac_freq = build_frequency_table(encoded_blocks)
+    
+    # Cây Huffman
+    dc_tree = build_huffman_tree(dc_freq)
+    ac_tree = build_huffman_tree(ac_freq)
+    
+    # Bảng mã
+    dc_codes = build_huffman_codes(dc_tree)
+    ac_codes = build_huffman_codes(ac_tree)
+    
+    # Mã hóa
+    encoded_data, total_bits = huffman_encode(encoded_blocks, dc_codes, ac_codes)
+    
     return {
         'encoded_data': encoded_data,
-        'huffman_codes': huffman_codes,
-        'original_length': original_length  # hữu ích cho việc giải mã
+        'dc_codes': dc_codes,
+        'ac_codes': ac_codes,
+        'shape': shape,
+        'total_bits': total_bits
     }
-
-

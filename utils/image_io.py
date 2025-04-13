@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 from PIL import Image
 import pickle
 import json
@@ -7,9 +6,33 @@ import os
 import struct
 from pathlib import Path
 
+def is_grayscale_image(img):
+    """
+    Kiểm tra xem ảnh có phải là ảnh xám (2D) hoặc ảnh xám giả (RGB/BGR với các kênh giống nhau).
+    
+    Parameters:
+    -----------
+    img : ndarray
+        Mảng NumPy biểu diễn ảnh (2D hoặc 3D)
+    
+    Returns:
+    --------
+    bool
+        True nếu ảnh là ảnh xám, False nếu là ảnh màu
+    """
+    if img.ndim == 2 or (img.ndim == 3 and img.shape[2] == 1):
+        return True
+    if img.ndim == 3 and img.shape[2] == 3:
+        # Kiểm tra mẫu nhỏ để tối ưu tốc độ
+        sample_size = min(32, img.shape[0], img.shape[1])
+        sample = img[:sample_size, :sample_size, :]
+        return np.array_equal(sample[:, :, 0], sample[:, :, 1]) and np.array_equal(sample[:, :, 0], sample[:, :, 2])
+    return False
+
 def read_image(image_path):
     """
-    Đọc ảnh từ đường dẫn.
+    Đọc ảnh từ đường dẫn, tự động nhận diện và xử lý phù hợp với ảnh màu hoặc ảnh xám.
+    Nếu ảnh có 3 kênh màu nhưng các kênh giống hệt nhau, chuyển đổi thành ảnh xám (2D).
     
     Parameters:
     -----------
@@ -19,28 +42,35 @@ def read_image(image_path):
     Returns:
     --------
     ndarray
-        Mảng numpy biểu diễn ảnh với shape (height, width) cho ảnh xám
-        hoặc (height, width, 3) cho ảnh màu RGB
+        Mảng NumPy biểu diễn ảnh với shape (height, width) cho ảnh xám
+        hoặc (height, width, 3) cho ảnh màu RGB, dtype=float32, giá trị trong [0, 255]
+    
+    Raises:
+    -------
+    IOError
+        Nếu không thể đọc được ảnh
+    ValueError
+        Nếu giá trị pixel ngoài khoảng [0, 255]
     """
     try:
-        # Thử sử dụng OpenCV để đọc ảnh
-        img = cv2.imread(image_path)
+        # Đọc ảnh bằng PIL
+        img_pil = Image.open(image_path)
+        img = np.array(img_pil)
         
-        if img is None:
-            # Nếu OpenCV không đọc được, thử dùng PIL
-            img_pil = Image.open(image_path)
-            img = np.array(img_pil)
-            
-            # Nếu ảnh có kênh alpha, loại bỏ nó
-            if img.shape[-1] == 4:
-                img = img[:, :, :3]
-                
-            # PIL đọc theo định dạng RGB, không cần chuyển đổi
-        else:
-            # OpenCV đọc theo định dạng BGR, nên cần chuyển thành RGB
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-        return img
+        # Loại bỏ kênh alpha nếu có
+        if img.ndim == 3 and img.shape[2] == 4:
+            img = img[:, :, :3]
+        
+        # Kiểm tra giá trị pixel
+        if img.max() > 255 or img.min() < 0:
+            raise ValueError("Giá trị pixel phải nằm trong [0, 255]")
+        
+        # Chuyển đổi sang ảnh xám nếu cần
+        if is_grayscale_image(img):
+            if img.ndim == 3:
+                img = img[:, :, 0]  # Lấy một kênh
+        
+        return np.clip(img, 0, 255).astype(np.float32)
     
     except Exception as e:
         raise IOError(f"Không thể đọc ảnh từ {image_path}: {str(e)}")

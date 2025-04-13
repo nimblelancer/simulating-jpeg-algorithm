@@ -48,176 +48,238 @@ def dct_1d(vector):
     """
     Thực hiện DCT 1D trên một vector độ dài 8.
     
-    Input:
-        vector: Vector đầu vào có độ dài 8
+    Parameters:
+    -----------
+    vector : ndarray
+        Vector đầu vào, shape (8,), dtype=float32
     
-    Output:
-        Vector kết quả sau khi áp dụng DCT 1D
+    Returns:
+    --------
+    ndarray
+        Vector hệ số DCT, shape (8,), dtype=float32
+    
+    Raises:
+    -------
+    ValueError
+        Nếu vector không có độ dài 8
     """
-    n = len(vector)
-    result = np.zeros(n)
+    if vector.shape != (8,):
+        raise ValueError("Vector phải có độ dài 8")
     
-    for k in range(n):
-        ck = 1 / np.sqrt(2) if k == 0 else 1
-        sum_val = 0
-        for i in range(n):
-            sum_val += vector[i] * np.cos((2 * i + 1) * k * np.pi / (2 * n))
-        result[k] = ck * sum_val * np.sqrt(2 / n)
+    vector = vector.astype(np.float32)
+    n = 8
+    # Ma trận DCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    dct_matrix = np.sqrt(2 / n) * ck * cos_term
     
-    return result
+    return np.dot(dct_matrix, vector)
 
 def dct_2d_separable(block):
     """
-    Thực hiện DCT 2D trên một khối 8x8 bằng cách sử dụng phương pháp tách biệt.
+    Thực hiện DCT 2D trên một khối 8x8.
     
-    Input:
-        block: Ma trận 8x8 đầu vào
+    Parameters:
+    -----------
+    block : ndarray
+        Khối đầu vào, shape (8, 8), dtype=float32, giá trị trong [0, 255]
     
-    Output:
-        Ma trận 8x8 sau khi áp dụng DCT
+    Returns:
+    --------
+    ndarray
+        Khối hệ số DCT, shape (8, 8), dtype=float32
+    
+    Raises:
+    -------
+    ValueError
+        Nếu block không có shape (8, 8) hoặc giá trị ngoài [0, 255]
     """
-    # Kiểm tra kích thước đầu vào
     if block.shape != (8, 8):
-        raise ValueError("Block phải có kích thước 8x8")
+        raise ValueError("Khối phải có shape (8, 8)")
+    if block.max() > 255 or block.min() < 0:
+        raise ValueError("Giá trị pixel phải nằm trong [0, 255]")
     
-    # Trừ 128 để dịch giá trị về khoảng [-128, 127]
-    block = block - 128
+    block = block.astype(np.float32) - 128
+    n = 8
+    # Ma trận DCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    dct_matrix = np.sqrt(2 / n) * ck * cos_term
     
-    # Áp dụng DCT 1D cho mỗi hàng
-    temp = np.zeros((8, 8))
-    for i in range(8):
-        temp[i, :] = dct_1d(block[i, :])
-    
-    # Áp dụng DCT 1D cho mỗi cột của kết quả trung gian
-    result = np.zeros((8, 8))
-    for j in range(8):
-        result[:, j] = dct_1d(temp[:, j])
-    
-    return result
+    # DCT 2D = dct_matrix * block * dct_matrix.T
+    return np.dot(np.dot(dct_matrix, block), dct_matrix.T)
 
 def apply_dct_to_image(image_blocks):
     """
     Áp dụng DCT cho tất cả các khối 8x8 của ảnh.
     
-    Input:
-        image_blocks: Mảng 4D (h, w, 8, 8) chứa các khối 8x8 của ảnh
-                     hoặc mảng 5D (c, h, w, 8, 8) nếu có nhiều kênh màu
+    Parameters:
+    -----------
+    image_blocks : ndarray
+        - 4D: shape (h, w, 8, 8) cho ảnh xám
+        - 5D: shape (c, h, w, 8, 8) cho ảnh đa kênh
+        dtype=float32, giá trị trong [0, 255]
     
-    Output:
-        Mảng các khối sau khi áp dụng DCT với cùng kích thước đầu vào
+    Returns:
+    --------
+    ndarray
+        Các khối hệ số DCT, shape giống đầu vào, dtype=float32
+    
+    Raises:
+    -------
+    ValueError
+        Nếu shape không đúng hoặc giá trị ngoài [0, 255]
     """
-    # Xác định hình dạng của mảng đầu vào
-    is_multichannel = len(image_blocks.shape) == 5
+    if image_blocks.ndim not in (4, 5):
+        raise ValueError("image_blocks phải là mảng 4D hoặc 5D")
+    if image_blocks.max() > 255 or image_blocks.min() < 0:
+        raise ValueError("Giá trị pixel phải nằm trong [0, 255]")
+    if image_blocks.shape[-2:] != (8, 8):
+        raise ValueError("Kích thước khối phải là 8x8")
     
-    if is_multichannel:
-        c, h, w, block_h, block_w = image_blocks.shape
-        dct_blocks = np.zeros_like(image_blocks)
-        
-        # Áp dụng DCT cho từng kênh màu và từng khối
-        for channel in range(c):
-            for i in range(h):
-                for j in range(w):
-                    dct_blocks[channel, i, j] = dct_2d_separable(image_blocks[channel, i, j])
-    else:
-        h, w, block_h, block_w = image_blocks.shape
-        dct_blocks = np.zeros_like(image_blocks)
-        
-        # Áp dụng DCT cho từng khối
-        for i in range(h):
-            for j in range(w):
-                dct_blocks[i, j] = dct_2d_separable(image_blocks[i, j])
+    image_blocks = image_blocks.astype(np.float32)
+    n = 8
+    # Ma trận DCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    dct_matrix = np.sqrt(2 / n) * ck * cos_term
     
-    return dct_blocks
+    if image_blocks.ndim == 4:
+        h, w = image_blocks.shape[:2]
+        blocks = image_blocks.reshape(h * w, 8, 8) - 128
+        dct_blocks = np.einsum('ij,kjl,lm->kim', dct_matrix, blocks, dct_matrix.T)
+        return dct_blocks.reshape(h, w, 8, 8)
+    
+    c, h, w = image_blocks.shape[:3]
+    blocks = image_blocks.reshape(c, h * w, 8, 8) - 128
+    dct_blocks = np.einsum('ij,ckjl,lm->ckim', dct_matrix, blocks, dct_matrix.T)
+    return dct_blocks.reshape(c, h, w, 8, 8)
 
-# endregion DCT
-
-# region IDCT
 def idct_1d(vector):
     """
     Thực hiện IDCT 1D trên một vector độ dài 8.
     
-    Input:
-        vector: Vector đầu vào có độ dài 8 (các hệ số DCT)
+    Parameters:
+    -----------
+    vector : ndarray
+        Vector hệ số DCT, shape (8,), dtype=float32
     
-    Output:
-        Vector kết quả sau khi áp dụng IDCT 1D
+    Returns:
+    --------
+    ndarray
+        Vector giá trị pixel, shape (8,), dtype=float32
+    
+    Raises:
+    -------
+    ValueError
+        Nếu vector không có độ dài 8
     """
-    n = len(vector)
-    result = np.zeros(n)
+    if vector.shape != (8,):
+        raise ValueError("Vector phải có độ dài 8")
     
-    for i in range(n):
-        sum_val = 0
-        for k in range(n):
-            ck = 1 / np.sqrt(2) if k == 0 else 1
-            sum_val += ck * vector[k] * np.cos((2 * i + 1) * k * np.pi / (2 * n))
-        result[i] = sum_val * np.sqrt(2 / n)
+    vector = vector.astype(np.float32)
+    n = 8
+    # Ma trận IDCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    idct_matrix = np.sqrt(2 / n) * ck * cos_term.T
     
-    return result
+    return np.dot(idct_matrix, vector)
 
 def idct_2d_separable(block):
     """
-    Thực hiện IDCT 2D trên một khối 8x8 bằng cách sử dụng phương pháp tách biệt.
+    Thực hiện IDCT 2D trên một khối 8x8.
     
-    Input:
-        block: Ma trận 8x8 đầu vào chứa các hệ số DCT
+    Parameters:
+    -----------
+    block : ndarray
+        Khối hệ số DCT, shape (8, 8), dtype=float32
     
-    Output:
-        Ma trận 8x8 sau khi áp dụng IDCT, đại diện cho khối pixel ban đầu
+    Returns:
+    --------
+    ndarray
+        Khối pixel, shape (8, 8), dtype=float32, giá trị trong [0, 255]
+    
+    Raises:
+    -------
+    ValueError
+        Nếu block không có shape (8, 8)
     """
-    # Kiểm tra kích thước đầu vào
     if block.shape != (8, 8):
-        raise ValueError("Block phải có kích thước 8x8")
+        raise ValueError("Khối phải có shape (8, 8)")
     
-    # Áp dụng IDCT 1D cho mỗi cột
-    temp = np.zeros((8, 8))
-    for j in range(8):
-        temp[:, j] = idct_1d(block[:, j])
+    block = block.astype(np.float32)
+    n = 8
+    # Ma trận IDCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    idct_matrix = np.sqrt(2 / n) * ck * cos_term.T
     
-    # Áp dụng IDCT 1D cho mỗi hàng của kết quả trung gian
-    result = np.zeros((8, 8))
-    for i in range(8):
-        result[i, :] = idct_1d(temp[i, :])
-    
-    # Cộng lại 128 để chuyển về khoảng giá trị pixel [0, 255]
-    result = result + 128
-    
-    # Giới hạn giá trị pixel trong khoảng [0, 255]
-    result = np.clip(result, 0, 255)
-    
-    return result
+    # IDCT 2D = idct_matrix * block * idct_matrix.T
+    result = np.dot(np.dot(idct_matrix, block), idct_matrix.T)
+    result = np.clip(result + 128, 0, 255)
+    return result.astype(np.float32)
 
 def apply_idct_to_image(dct_blocks):
     """
-    Áp dụng IDCT cho tất cả các khối 8x8 của ảnh đã được nén.
+    Áp dụng IDCT cho tất cả các khối 8x8 của ảnh.
     
-    Input:
-        dct_blocks: Mảng 4D (h, w, 8, 8) chứa các khối 8x8 của hệ số DCT
-                   hoặc mảng 5D (c, h, w, 8, 8) nếu có nhiều kênh màu
+    Parameters:
+    -----------
+    dct_blocks : ndarray
+        - 4D: shape (h, w, 8, 8) cho ảnh xám
+        - 5D: shape (c, h, w, 8, 8) cho ảnh đa kênh
+        dtype=float32
     
-    Output:
-        Mảng các khối pixel sau khi áp dụng IDCT với cùng kích thước đầu vào
+    Returns:
+    --------
+    ndarray
+        Các khối pixel, shape giống đầu vào, dtype=float32, giá trị trong [0, 255]
+    
+    Raises:
+    -------
+    ValueError
+        Nếu shape không đúng
     """
-    # Xác định hình dạng của mảng đầu vào
-    is_multichannel = len(dct_blocks.shape) == 5
+    if dct_blocks.ndim not in (4, 5):
+        raise ValueError("dct_blocks phải là mảng 4D hoặc 5D")
+    if dct_blocks.shape[-2:] != (8, 8):
+        raise ValueError("Kích thước khối phải là 8x8")
     
-    if is_multichannel:
-        c, h, w, block_h, block_w = dct_blocks.shape
-        pixel_blocks = np.zeros_like(dct_blocks)
-        
-        # Áp dụng IDCT cho từng kênh màu và từng khối
-        for channel in range(c):
-            for i in range(h):
-                for j in range(w):
-                    pixel_blocks[channel, i, j] = idct_2d_separable(dct_blocks[channel, i, j])
-    else:
-        h, w, block_h, block_w = dct_blocks.shape
-        pixel_blocks = np.zeros_like(dct_blocks)
-        
-        # Áp dụng IDCT cho từng khối
-        for i in range(h):
-            for j in range(w):
-                pixel_blocks[i, j] = idct_2d_separable(dct_blocks[i, j])
+    dct_blocks = dct_blocks.astype(np.float32)
+    n = 8
+    # Ma trận IDCT
+    k = np.arange(n)
+    i = np.arange(n).reshape(-1, 1)
+    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
+    ck = np.ones(n)
+    ck[0] = 1 / np.sqrt(2)
+    idct_matrix = np.sqrt(2 / n) * ck * cos_term.T
     
-    return pixel_blocks
-# endregion IDCT
-
+    if dct_blocks.ndim == 4:
+        h, w = dct_blocks.shape[:2]
+        blocks = dct_blocks.reshape(h * w, 8, 8)
+        pixel_blocks = np.einsum('ij,kjl,lm->kim', idct_matrix, blocks, idct_matrix.T)
+        pixel_blocks = np.clip(pixel_blocks + 128, 0, 255)
+        return pixel_blocks.reshape(h, w, 8, 8).astype(np.float32)
+    
+    c, h, w = dct_blocks.shape[:3]
+    blocks = dct_blocks.reshape(c, h * w, 8, 8)
+    pixel_blocks = np.einsum('ij,ckjl,lm->ckim', idct_matrix, blocks, idct_matrix.T)
+    pixel_blocks = np.clip(pixel_blocks + 128, 0, 255)
+    return pixel_blocks.reshape(c, h, w, 8, 8).astype(np.float32)
