@@ -1,48 +1,20 @@
 import streamlit as st
-import numpy as np
 from PIL import Image
-import os
-import cv2
+st.sidebar.title("Sidebar Tiêu đề")
+st.title("1️⃣ Upload Image")
 
-def app():
-    st.title("Step 1: Upload Image")
-    
-    # Create a session state to store the image data
-    if 'image' not in st.session_state:
-        st.session_state.image = None
-        st.session_state.filename = None
-    
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-    
-    if uploaded_file is not None:
-        # Read the image
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-        
-        # Save to session state
-        st.session_state.image = image
-        st.session_state.filename = uploaded_file.name
-        
-        # Save the image for future steps
-        temp_dir = "temp"
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        
-        # Save the original image
-        Image.fromarray(image).save(os.path.join(temp_dir, "original.jpg"))
-        
-        # Display the image
-        st.image(image, caption="Original Image", use_column_width=True)
-        
-        # Display image information
-        st.write(f"Image shape: {image.shape}")
-        st.write(f"Image size: {image.size} pixels")
-        
-        # Add a success message
-        st.success("Image uploaded successfully! You can proceed to the next step.")
-    else:
-        st.info("Please upload an image to begin the JPEG compression visualization.")
+st.write("### 📤 Tải ảnh lên")
+uploaded_file = st.file_uploader("Chọn một ảnh JPEG hoặc PNG", type=["jpg", "jpeg", "png"])
 
-if __name__ == "__main__":
-    app()
+if uploaded_file:
+    image = Image.open(uploaded_file)  # Giữ nguyên ảnh gốc, không chuyển sang grayscale
+    image.save("assets/images/test/original.png")  # Lưu lại cho các bước sau dùng
+
+    # 👉 Điều chỉnh chiều rộng ảnh hiển thị (ví dụ: 500px)
+    st.image(image, caption="Ảnh đã upload", width=500)
+
+    st.write("### 🧾 Thông tin ảnh")
+    st.write(f"**Kích thước:** {image.width} x {image.height} pixels")
+    st.write(f"**Định dạng:** {uploaded_file.type}")
+else:
+    st.info("Chưa có ảnh nào được upload.")
