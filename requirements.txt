@@ -2,4 +2,7 @@ numpy
 opencv-python
 Pillow
 streamlit
+streamlit-option-menu
+plotly
+pandas
 seaborn
