@@ -1,10 +1,5 @@
 numpy
 opencv-python
 Pillow
-
-
-
-
-
 streamlit
 seaborn

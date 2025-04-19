@@ -1,9 +1,5 @@
 import streamlit as st
 
-# Cấu hình trang
-# st.set_page_config(page_title="JPEG Compression Simulator", layout="wide")
-
-# Tùy chỉnh sidebar
 st.sidebar.title("📷 JPEG Compression Simulator")
 st.sidebar.markdown("""
 ### Chào mừng bạn đến với mô phỏng nén JPEG!
