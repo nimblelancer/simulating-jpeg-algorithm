@@ -5,6 +5,9 @@ import json
 import os
 import struct
 from pathlib import Path
+import cv2
+
+DEFAULT_IMAGE_DIR = "assets/images/processing"
 
 def is_grayscale_image(img):
     """
@@ -74,45 +77,6 @@ def read_image(image_path):
     
     except Exception as e:
         raise IOError(f"Không thể đọc ảnh từ {image_path}: {str(e)}")
-
-def save_image(image_path, image):
-    """
-    Lưu ảnh ra file.
-    
-    Parameters:
-    -----------
-    image_path : str
-        Đường dẫn để lưu ảnh
-    image : ndarray
-        Mảng numpy biểu diễn ảnh cần lưu
-    
-    Returns:
-    --------
-    None
-    """
-    try:
-        # Đảm bảo giá trị pixel nằm trong khoảng [0, 255] và kiểu dữ liệu là uint8
-        img = np.clip(image, 0, 255).astype(np.uint8)
-        
-        # Kiểm tra phần mở rộng của file để xác định định dạng lưu
-        ext = image_path.lower().split('.')[-1]
-        
-        if ext in ['jpg', 'jpeg', 'png', 'bmp', 'tiff']:
-            # Nếu ảnh là RGB, OpenCV cần BGR
-            if len(img.shape) == 3 and img.shape[2] == 3:
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                
-            # Lưu ảnh bằng OpenCV
-            cv2.imwrite(image_path, img)
-        else:
-            # Nếu định dạng không được hỗ trợ bởi OpenCV, dùng PIL
-            img_pil = Image.fromarray(img)
-            img_pil.save(image_path)
-            
-        print(f"Đã lưu ảnh thành công tại: {image_path}")
-    
-    except Exception as e:
-        raise IOError(f"Không thể lưu ảnh vào {image_path}: {str(e)}")
 
 def create_jpeg_header(image_shape, quality=50, subsampling='4:2:0', is_color=True):
     """
@@ -288,3 +252,73 @@ def adjust_quant_tables(quality):
         c_quant_table = np.clip(c_quant_table, 1, 255)
     
     return y_quant_table, c_quant_table
+
+
+def save_image(image, filename):
+    """
+    Lưu ảnh ra thư mục cố định với tên tùy chọn.
+
+    Parameters:
+    -----------
+    image : ndarray
+        Mảng numpy biểu diễn ảnh cần lưu
+    filename : str
+        Tên file (bao gồm phần mở rộng: .jpg, .png, v.v.)
+
+    Returns:
+    --------
+    full_path : str
+        Đường dẫn đầy đủ tới ảnh đã lưu
+    """
+    # Tạo thư mục nếu chưa tồn tại
+    os.makedirs(DEFAULT_IMAGE_DIR, exist_ok=True)
+
+    # Xử lý ảnh để đảm bảo đúng định dạng
+    img = np.clip(image, 0, 255).astype(np.uint8)
+    ext = filename.lower().split('.')[-1]
+    full_path = os.path.join(DEFAULT_IMAGE_DIR, filename)
+
+    try:
+        if ext in ['jpg', 'jpeg', 'png', 'bmp', 'tiff']:
+            if len(img.shape) == 3 and img.shape[2] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(full_path, img)
+        else:
+            img_pil = Image.fromarray(img)
+            img_pil.save(full_path)
+
+        print(f"✅ Đã lưu ảnh thành công tại: {full_path}")
+        return full_path
+    except Exception as e:
+        print(f"❌ Lỗi khi lưu ảnh: {e}")
+        return None
+
+
+def load_image(filename):
+    """
+    Load ảnh từ thư mục cố định dựa trên tên file.
+
+    Parameters:
+    -----------
+    filename : str
+        Tên file ảnh cần load (bao gồm phần mở rộng)
+
+    Returns:
+    --------
+    image : ndarray
+        Mảng numpy biểu diễn ảnh
+    """
+    full_path = os.path.join(DEFAULT_IMAGE_DIR, filename)
+
+    if not os.path.exists(full_path):
+        print(f"❌ Không tìm thấy ảnh tại: {full_path}")
+        return None
+
+    try:
+        img = Image.open(full_path)
+        image = np.array(img)
+        print(f"✅ Đã load ảnh thành công từ: {full_path}")
+        return image
+    except Exception as e:
+        print(f"❌ Lỗi khi load ảnh: {e}")
+        return None

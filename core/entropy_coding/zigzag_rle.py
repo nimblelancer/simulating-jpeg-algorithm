@@ -226,30 +226,39 @@ def apply_inverse_zigzag_and_rle(rle_blocks, image_shape):
     
     if len(image_shape) == 2:
         h, w = image_shape
-        if len(rle_blocks) != h * w:
+        block_h, block_w = h // 8, w // 8
+        if len(rle_blocks) != block_h * block_w:
+            print("--- DEBUG INFO ---")
+            print("Image shape:", image_shape)
+            print("rle_blocks length:", len(rle_blocks))
+            if isinstance(rle_blocks[0], list):
+                for i, channel in enumerate(rle_blocks):
+                    print(f"  Channel {i}: {len(channel)} blocks")
+            print("-------------------")
             raise ValueError("Số lượng rle_blocks không khớp với image_shape")
         
-        blocks = np.zeros((h * w, 64), dtype=np.int32)
+        blocks = np.zeros((block_h * block_w, 64), dtype=np.int32)
         for i, rle in enumerate(rle_blocks):
             blocks[i] = inverse_rle(rle)
         
         # Inverse zigzag
         blocks[:, zigzag_indices] = blocks
-        return blocks.reshape(h, w, 8, 8).astype(np.int32)
+        return blocks.reshape(block_h, block_w, 8, 8).astype(np.int32)
     
     elif len(image_shape) == 3:
         c, h, w = image_shape
-        if len(rle_blocks) != c or any(len(channel) != h * w for channel in rle_blocks):
+        block_h, block_w = h // 8, w // 8
+        if len(rle_blocks) != c or any(len(channel) != block_h * block_w for channel in rle_blocks):
             raise ValueError("Số lượng rle_blocks không khớp với image_shape")
         
-        blocks = np.zeros((c, h * w, 64), dtype=np.int32)
+        blocks = np.zeros((c, block_h * block_w, 64), dtype=np.int32)
         for ch in range(c):
             for i, rle in enumerate(rle_blocks[ch]):
                 blocks[ch, i] = inverse_rle(rle)
         
         # Inverse zigzag
         blocks[:, :, zigzag_indices] = blocks
-        return blocks.reshape(c, h, w, 8, 8).astype(np.int32)
+        return blocks.reshape(c, block_h, block_w, 8, 8).astype(np.int32)
     
     else:
         raise ValueError("image_shape phải có dạng (h, w) hoặc (c, h, w)")

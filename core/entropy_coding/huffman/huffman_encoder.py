@@ -1,40 +1,29 @@
 import numpy as np
 from collections import Counter
+from core.entropy_coding.huffman.node import Node
 import heapq
 import json
 
 def build_frequency_table(data):
-    """
-    Xây dựng bảng tần suất cho DC và AC coefficients.
-    
-    Parameters:
-    -----------
-    data : list
-        List từ apply_zigzag_and_rle: [channel][block] = (dc, ac) hoặc [block] = (dc, ac)
-    
-    Returns:
-    --------
-    tuple
-        (dc_freq, ac_freq): Dict tần suất cho DC và AC coefficients
-    """
-    if not data or not isinstance(data, list):
-        raise ValueError("Dữ liệu đầu vào phải là list không rỗng")
-    
+    ...
     dc_freq = Counter()
     ac_freq = Counter()
-    
-    if isinstance(data[0], list):  # Ảnh màu
+
+    if isinstance(data[0], list):
         for channel in data:
             for dc, ac in channel:
                 dc_freq[dc] += 1
                 for run, value in ac:
                     ac_freq[(run, value)] += 1
-    else:  # Ảnh xám
+    else:
         for dc, ac in data:
             dc_freq[dc] += 1
             for run, value in ac:
                 ac_freq[(run, value)] += 1
-    
+
+    ac_freq[(0, 0)] += 1      # EOB (End of Block)
+    ac_freq[(15, 0)] += 1     # ZRL (Zero Run Length)
+
     return dc_freq, ac_freq
 
 def build_huffman_tree(freq_table):
@@ -139,6 +128,9 @@ def huffman_encode(data, dc_codes, ac_codes):
                     if key not in ac_codes:
                         raise ValueError(f"AC value {key} không có trong bảng mã")
                     bitstring += ac_codes[key]
+
+                if ac[-1] != (0, 0):
+                    bitstring += ac_codes[(0, 0)]
     else:  # Ảnh xám
         for dc, ac in data:
             if dc not in dc_codes:
@@ -149,6 +141,9 @@ def huffman_encode(data, dc_codes, ac_codes):
                 if key not in ac_codes:
                     raise ValueError(f"AC value {key} không có trong bảng mã")
                 bitstring += ac_codes[key]
+            
+            if ac[-1] != (0, 0):
+                bitstring += ac_codes[(0, 0)]
     
     # Chuyển bitstring thành bytes
     byte_array = []

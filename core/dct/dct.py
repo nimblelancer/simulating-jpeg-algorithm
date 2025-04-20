@@ -237,49 +237,53 @@ def idct_2d_separable(block):
 
 def apply_idct_to_image(dct_blocks):
     """
-    Áp dụng IDCT cho tất cả các khối 8x8 của ảnh.
+    Áp dụng IDCT cho tất cả các khối 8x8 theo cách thủ công, độ chính xác cao.
     
     Parameters:
     -----------
     dct_blocks : ndarray
         - 4D: shape (h, w, 8, 8) cho ảnh xám
-        - 5D: shape (c, h, w, 8, 8) cho ảnh đa kênh
-        dtype=float32
+        - 5D: shape (c, h, w, 8, 8) cho ảnh màu
+        dtype=float32 hoặc float64
     
     Returns:
     --------
     ndarray
-        Các khối pixel, shape giống đầu vào, dtype=float32, giá trị trong [0, 255]
-    
-    Raises:
-    -------
-    ValueError
-        Nếu shape không đúng
+        Các khối pixel sau IDCT, cùng shape với đầu vào, dtype=float32
     """
-    if dct_blocks.ndim not in (4, 5):
-        raise ValueError("dct_blocks phải là mảng 4D hoặc 5D")
-    if dct_blocks.shape[-2:] != (8, 8):
-        raise ValueError("Kích thước khối phải là 8x8")
+    import numpy as np
     
-    dct_blocks = dct_blocks.astype(np.float32)
+    if dct_blocks.ndim not in (4, 5) or dct_blocks.shape[-2:] != (8, 8):
+        raise ValueError("dct_blocks phải là mảng 4D hoặc 5D với block size 8x8")
+
+    # Sử dụng độ chính xác cao hơn
+    dct_blocks = dct_blocks.astype(np.float64)
+    
     n = 8
-    # Ma trận IDCT
-    k = np.arange(n)
     i = np.arange(n).reshape(-1, 1)
-    cos_term = np.cos((2 * i + 1) * k * np.pi / (2 * n))
-    ck = np.ones(n)
-    ck[0] = 1 / np.sqrt(2)
-    idct_matrix = np.sqrt(2 / n) * ck * cos_term.T
+    j = np.arange(n).reshape(1, -1)
     
+    # Tạo ma trận IDCT (Chuẩn hóa theo JPEG)
+    alpha = np.ones(n)
+    alpha[0] = 1 / np.sqrt(2)
+    idct_matrix = np.cos((2 * i + 1) * j * np.pi / (2 * n)) * alpha
+    idct_matrix *= np.sqrt(2 / n)
+
     if dct_blocks.ndim == 4:
         h, w = dct_blocks.shape[:2]
-        blocks = dct_blocks.reshape(h * w, 8, 8)
-        pixel_blocks = np.einsum('ij,kjl,lm->kim', idct_matrix, blocks, idct_matrix.T)
-        pixel_blocks = np.clip(pixel_blocks + 128, 0, 255)
-        return pixel_blocks.reshape(h, w, 8, 8).astype(np.float32)
+        result = np.empty_like(dct_blocks, dtype=np.float64)
+        for i in range(h):
+            for j in range(w):
+                result[i, j] = idct_matrix @ dct_blocks[i, j] @ idct_matrix.T
+        result = np.clip(result + 128, 0, 255)
+        return result.astype(np.float32)
     
+    # 5D với ảnh màu
     c, h, w = dct_blocks.shape[:3]
-    blocks = dct_blocks.reshape(c, h * w, 8, 8)
-    pixel_blocks = np.einsum('ij,ckjl,lm->ckim', idct_matrix, blocks, idct_matrix.T)
-    pixel_blocks = np.clip(pixel_blocks + 128, 0, 255)
-    return pixel_blocks.reshape(c, h, w, 8, 8).astype(np.float32)
+    result = np.empty_like(dct_blocks, dtype=np.float64)
+    for ch in range(c):
+        for i in range(h):
+            for j in range(w):
+                result[ch, i, j] = idct_matrix @ dct_blocks[ch, i, j] @ idct_matrix.T
+    result = np.clip(result + 128, 0, 255)
+    return result.astype(np.float32)
