@@ -68,33 +68,24 @@ class JPEGProcessor:
         # Bước 2: Padding ảnh và chia thành các khối 8x8
         image = pad_image_to_multiple_of_8(image)
         blocks = split_into_blocks(image)
-        print("Blocks shape:", blocks.shape)
         if blocks.ndim == 4:
             num_blocks = blocks.shape[0] * blocks.shape[1]  # ảnh xám
         else:
             num_blocks = blocks.shape[1] * blocks.shape[2]  # ảnh màu
 
-        print(f"Tổng số block: {num_blocks}")
         self.intermediates['blocks'] = blocks.copy()
         
         # Bước 3: DCT
         dct_blocks = apply_dct_to_image(blocks)
-        print("DCT shape:", dct_blocks.shape)
         self.intermediates['dct'] = dct_blocks.copy()
         
         # Bước 4: Lượng tử hóa
-        print("Quality at quantization:", self.quality)
         quant_blocks = optimize_quantization_for_speed(dct_blocks, self.quality)
-        print("Quantized shape:", quant_blocks.shape)
         self.intermediates['quantized'] = quant_blocks.copy()
         
         # Bước 5: Zigzag và RLE
         rle_data = apply_zigzag_and_rle(quant_blocks)
-        print("Số block sau Zigzag + RLE:", len(rle_data))
-        self.intermediates['rle'] = rle_data
-        print("\n🔍 Sample rle_data (first 3 blocks):")
-        for i, block in enumerate(rle_data[:3]):
-            print(f"Block {i}: {block}")
+        self.intermediates['rle'] = rle_data.copy()
         
         # Bước 6: Huffman
         dc_freq, ac_freq = build_frequency_table(rle_data)

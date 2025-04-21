@@ -6,33 +6,42 @@ def huffman_decode_bitstring(encoded_data, dc_codes, ac_codes, total_bits):
     if not encoded_data or not dc_codes or not ac_codes:
         raise ValueError("Dữ liệu và bảng mã phải không rỗng")
 
+    # Chuyển bytes → bitstring
     bitstring = ''.join(bin(byte)[2:].zfill(8) for byte in encoded_data)
     bitstring = bitstring[:total_bits]
+
     reversed_dc = {code: value for value, code in dc_codes.items()}
     reversed_ac = {code: value for value, code in ac_codes.items()}
+    max_dc_len = max(len(k) for k in reversed_dc)
+    max_ac_len = max(len(k) for k in reversed_ac)
 
     decoded_data = []
     i = 0
-    length = len(bitstring)
+    previous_dc = 0
     block_idx = 0
-    while i < length:
-        # 1. Decode DC
+
+    while i < len(bitstring):
         block_idx += 1
+
+        # Decode DC
         current_code = ""
-        while i < length:
+        while i < len(bitstring) and len(current_code) <= max_dc_len:
             current_code += bitstring[i]
             i += 1
             if current_code in reversed_dc:
-                dc_value = reversed_dc[current_code]
+                dc_diff = reversed_dc[current_code]
                 break
         else:
-            print("❌ Không tìm thấy mã DC nào khớp")
-            break  # No valid DC found
+            print("❌ Không tìm thấy mã DC nào khớp tại block", block_idx)
+            break
 
-        # 2. Decode AC
+        dc_value = previous_dc + dc_diff
+        previous_dc = dc_value
+
+        # Decode AC
         ac_list = []
         current_code = ""
-        while i < length:
+        while i < len(bitstring):
             current_code += bitstring[i]
             i += 1
             if current_code in reversed_ac:
@@ -41,131 +50,11 @@ def huffman_decode_bitstring(encoded_data, dc_codes, ac_codes, total_bits):
                 current_code = ""
                 if ac_value == (0, 0):  # EOB
                     break
-        else:
-            print("❌ Không tìm thấy mã AC nào khớp tại index", i)
-            break            
+            elif len(current_code) > max_ac_len:
+                raise ValueError(f"❌ AC code không hợp lệ tại block {block_idx}, index {i}")
+
         decoded_data.append((dc_value, ac_list))
-    print("Tổng số block giải mã được:", len(decoded_data))  # nên là 810
+
+    print("✅ Tổng số block giải mã được:", len(decoded_data))
     return decoded_data
-
-
-def huffman_decode_jpeg_data(encoded_data, dc_codes, ac_codes, block_shape):
-    """
-    Giải mã dữ liệu JPEG đã mã hóa Huffman.
     
-    Parameters:
-    -----------
-    encoded_data : bytes
-        Dữ liệu mã hóa
-    dc_codes : dict
-        Bảng mã Huffman cho DC coefficients
-    ac_codes : dict
-        Bảng mã Huffman cho AC coefficients
-    block_shape : tuple
-        Shape ban đầu: (h, w, 8, 8) hoặc (c, h, w, 8, 8)
-    
-    Returns:
-    --------
-    ndarray
-        Mảng khối: (h, w, 8, 8) hoặc (c, h, w, 8, 8), dtype=int32
-    
-    Raises:
-    -------
-    ValueError
-        Nếu đầu vào không hợp lệ
-    """
-    if len(block_shape) not in (4, 5) or block_shape[-2:] != (8, 8):
-        raise ValueError("block_shape phải là (h, w, 8, 8) hoặc (c, h, w, 8, 8)")
-    
-    # Giải mã Huffman
-    decoded_data = huffman_decode_bitstring(encoded_data, dc_codes, ac_codes)
-    
-    zigzag_indices = np.array([
-        0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
-        12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
-        35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
-        58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
-    ])
-    
-    if len(block_shape) == 4:
-        h, w = block_shape[:2]
-        if len(decoded_data) != h * w:
-            raise ValueError("Số block giải mã không khớp với block_shape")
-        
-        blocks = np.zeros((h * w, 64), dtype=np.int32)
-        for i, (dc, ac) in enumerate(decoded_data):
-            array = [dc]
-            for run, value in ac:
-                if run > 0:
-                    array.extend([0] * run)
-                if value != 0 or run < 16:
-                    array.append(value)
-            array = array[:64]
-            if len(array) < 64:
-                array.extend([0] * (64 - len(array)))
-            blocks[i] = array
-        
-        blocks[:, zigzag_indices] = blocks
-        return blocks.reshape(h, w, 8, 8).astype(np.int32)
-    
-    c, h, w = block_shape[:3]
-    if len(decoded_data) != c * h * w:
-        raise ValueError("Số block giải mã không khớp với block_shape")
-    
-    blocks = np.zeros((c, h * w, 64), dtype=np.int32)
-    idx = 0
-    for ch in range(c):
-        for i in range(h * w):
-            dc, ac = decoded_data[idx]
-            array = [dc]
-            for run, value in ac:
-                if run > 0:
-                    array.extend([0] * run)
-                if value != 0 or run < 16:
-                    array.append(value)
-            array = array[:64]
-            if len(array) < 64:
-                array.extend([0] * (64 - len(array)))
-            blocks[ch, i] = array
-            idx += 1
-    
-    blocks[:, :, zigzag_indices] = blocks
-    return blocks.reshape(c, h, w, 8, 8).astype(np.int32)
-
-def decode_huffman_from_file(file_path):
-    """
-    Đọc và giải mã dữ liệu Huffman từ file.
-    
-    Parameters:
-    -----------
-    file_path : str
-        Đường dẫn đến file mã hóa
-    
-    Returns:
-    --------
-    ndarray
-        Mảng khối: (h, w, 8, 8) hoặc (c, h, w, 8, 8), dtype=int32
-    
-    Raises:
-    -------
-    IOError
-        Nếu không đọc được file
-    ValueError
-        Nếu dữ liệu trong file không hợp lệ
-    """
-    try:
-        with open(file_path, 'rb') as f:
-            # Đọc kích thước JSON
-            json_size = int.from_bytes(f.read(4), byteorder='big')
-            # Đọc JSON chứa codes và shape
-            json_data = json.loads(f.read(json_size).decode('utf-8'))
-            dc_codes = json_data['dc_codes']
-            ac_codes = json_data['ac_codes']
-            block_shape = tuple(json_data['shape'])
-            # Đọc dữ liệu mã hóa
-            encoded_data = f.read()
-        
-        return huffman_decode_jpeg_data(encoded_data, dc_codes, ac_codes, block_shape)
-    
-    except Exception as e:
-        raise ValueError(f"Không thể giải mã file {file_path}: {str(e)}")
