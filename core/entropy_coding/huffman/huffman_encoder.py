@@ -5,24 +5,21 @@ import heapq
 import json
 
 def build_frequency_table(data):
-    ...
     dc_freq = Counter()
+    for dc, _ in data:
+        dc_size = int(dc).bit_length() if dc != 0 else 0
+        dc_freq[dc_size] += 1
+
+    # AC
     ac_freq = Counter()
+    for _, ac in data:
+        for run, value in ac:
+            size = int(value).bit_length() if value != 0 else 0
+            ac_freq[(run, size)] += 1
 
-    if isinstance(data[0], list):
-        for channel in data:
-            for dc, ac in channel:
-                dc_freq[dc] += 1
-                for run, value in ac:
-                    ac_freq[(run, value)] += 1
-    else:
-        for dc, ac in data:
-            dc_freq[dc] += 1
-            for run, value in ac:
-                ac_freq[(run, value)] += 1
-
-    ac_freq[(0, 0)] += 1      # EOB (End of Block)
-    ac_freq[(15, 0)] += 1     # ZRL (Zero Run Length)
+    # Thêm EOB và ZRL
+    ac_freq[(0, 0)] += 1
+    ac_freq[(15, 0)] += 1
 
     return dc_freq, ac_freq
 
@@ -95,6 +92,9 @@ def build_huffman_codes(root):
     traverse(root, '')
     return codes
 
+def safe_bit_length(x):
+    return int(x).bit_length() if x != 0 else 0
+
 def huffman_encode(data, dc_codes, ac_codes):
     """
     Mã hóa dữ liệu sử dụng mã Huffman riêng cho DC và AC.
@@ -113,46 +113,74 @@ def huffman_encode(data, dc_codes, ac_codes):
     tuple
         (encoded_bytes, total_bits): Dữ liệu mã hóa dạng bytes và số bit
     """
+
+    def safe_bit_length(x):
+        return int(x).bit_length() if x != 0 else 0
+
+    def encode_magnitude(value, size):
+        if value >= 0:
+            return bin(value)[2:].zfill(size)
+        else:
+            max_val = (1 << size) - 1
+            inverted = max_val - abs(value)
+            return bin(inverted)[2:].zfill(size)
+
     if not data or not dc_codes or not ac_codes:
         raise ValueError("Dữ liệu và bảng mã phải không rỗng")
-    
+
     bitstring = ""
+
     if isinstance(data[0], list):  # Ảnh màu
         for channel in data:
             for dc, ac in channel:
-                if dc not in dc_codes:
-                    raise ValueError(f"DC value {dc} không có trong bảng mã")
-                bitstring += dc_codes[dc]
-                for run, value in ac:
-                    key = (run, value)
-                    if key not in ac_codes:
-                        raise ValueError(f"AC value {key} không có trong bảng mã")
-                    bitstring += ac_codes[key]
+                dc_size = safe_bit_length(dc)
+                if dc_size not in dc_codes:
+                    raise ValueError(f"DC size {dc_size} không có trong bảng mã")
+                bitstring += dc_codes[dc_size]
+                if dc_size > 0:
+                    bitstring += encode_magnitude(dc, dc_size)
 
-                if ac[-1] != (0, 0):
+                for run, value in ac:
+                    size = safe_bit_length(value)
+                    key = (run, size)
+                    if key not in ac_codes:
+                        raise ValueError(f"AC key {key} không có trong bảng mã")
+                    bitstring += ac_codes[key]
+                    if size > 0:
+                        bitstring += encode_magnitude(value, size)
+
+                if not ac or ac[-1] != (0, 0):
                     bitstring += ac_codes[(0, 0)]
+
     else:  # Ảnh xám
         for dc, ac in data:
-            if dc not in dc_codes:
-                raise ValueError(f"DC value {dc} không có trong bảng mã")
-            bitstring += dc_codes[dc]
+            dc_size = safe_bit_length(dc)
+            if dc_size not in dc_codes:
+                raise ValueError(f"DC size {dc_size} không có trong bảng mã")
+            bitstring += dc_codes[dc_size]
+            if dc_size > 0:
+                bitstring += encode_magnitude(dc, dc_size)
+
             for run, value in ac:
-                key = (run, value)
+                size = safe_bit_length(value)
+                key = (run, size)
                 if key not in ac_codes:
-                    raise ValueError(f"AC value {key} không có trong bảng mã")
+                    raise ValueError(f"AC key {key} không có trong bảng mã")
                 bitstring += ac_codes[key]
-            
-            if ac[-1] != (0, 0):
+                if size > 0:
+                    bitstring += encode_magnitude(value, size)
+
+            if not ac or ac[-1] != (0, 0):
                 bitstring += ac_codes[(0, 0)]
-    
+
     # Chuyển bitstring thành bytes
     byte_array = []
     for i in range(0, len(bitstring), 8):
         byte_str = bitstring[i:i+8]
         if len(byte_str) < 8:
-            byte_str = byte_str + '0' * (8 - len(byte_str))
+            byte_str += '0' * (8 - len(byte_str))
         byte_array.append(int(byte_str, 2))
-    
+
     return bytes(byte_array), len(bitstring)
 
 def apply_huffman_to_encoded_data(encoded_blocks):

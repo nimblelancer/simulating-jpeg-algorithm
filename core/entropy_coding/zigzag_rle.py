@@ -67,21 +67,27 @@ def apply_zigzag_and_rle(blocks):
 
     if blocks.ndim == 4:
         h, w = blocks.shape[:2]
+        previous_dc = 0
         for i in range(h):
             for j in range(w):
                 zigzagged = zigzag_scan(blocks[i, j])
                 dc, ac = run_length_encode(zigzagged)
-                result.append((dc, ac))
+                dc_diff = dc - previous_dc
+                previous_dc = dc
+                result.append((dc_diff, ac))
 
     else:  # ảnh màu (5D)
         c, h, w = blocks.shape[:3]
         for ch in range(c):
             channel_result = []
+            previous_dc = 0  # ✅ fix: mỗi kênh cần có riêng
             for i in range(h):
                 for j in range(w):
                     zigzagged = zigzag_scan(blocks[ch, i, j])
                     dc, ac = run_length_encode(zigzagged)
-                    channel_result.append((dc, ac))
+                    dc_diff = dc - previous_dc  # ✅ chuẩn JPEG
+                    previous_dc = dc
+                    channel_result.append((dc_diff, ac))
             result.append(channel_result)
 
     return result
@@ -89,29 +95,7 @@ def apply_zigzag_and_rle(blocks):
 def apply_inverse_zigzag_and_rle(rle_blocks, image_shape):
     """
     Giải mã RLE và zigzag để khôi phục các khối 8x8.
-    
-    Parameters:
-    -----------
-    rle_blocks : list
-        - Ảnh xám: List các (dc, ac)
-        - Ảnh màu: List các [channel][block] = (dc, ac)
-    image_shape : tuple
-        - (h, w) cho ảnh xám
-        - (c, h, w) cho ảnh màu
-    
-    Returns:
-    --------
-    ndarray
-        - 4D: shape (h, w, 8, 8) cho ảnh xám
-        - 5D: shape (c, h, w, 8, 8) cho ảnh màu
-        dtype=int32
-    
-    Raises:
-    -------
-    ValueError
-        Nếu rle_blocks hoặc image_shape không hợp lệ
     """
-    # === Ảnh xám ===
     if len(image_shape) == 2:
         h, w = image_shape
         block_h, block_w = h // 8, w // 8
@@ -121,11 +105,10 @@ def apply_inverse_zigzag_and_rle(rle_blocks, image_shape):
         blocks = np.zeros((block_h, block_w, 8, 8), dtype=np.int32)
         for idx, rle in enumerate(rle_blocks):
             i, j = divmod(idx, block_w)
-            flat = inverse_rle(rle)
+            flat = rle_to_array(rle)
             blocks[i, j] = inverse_zigzag(flat)
         return blocks
 
-    # === Ảnh màu ===
     elif len(image_shape) == 3:
         c, h, w = image_shape
         block_h, block_w = h // 8, w // 8
@@ -136,35 +119,30 @@ def apply_inverse_zigzag_and_rle(rle_blocks, image_shape):
         for ch in range(c):
             for idx, rle in enumerate(rle_blocks[ch]):
                 i, j = divmod(idx, block_w)
-                flat = inverse_rle(rle)
+                flat = rle_to_array(rle)
                 blocks[ch, i, j] = inverse_zigzag(flat)
         return blocks
 
     else:
         raise ValueError("image_shape phải có dạng (h, w) hoặc (c, h, w)")
 
-def inverse_rle(rle_data):
+def rle_to_array(rle_data):
     dc, ac = rle_data
-    array = [dc]
-    for run, value in ac:
-        if run == 0 and value == 0:
-            break  # EOB
-        array.extend([0] * run)
-        array.append(value)
+    array = [dc] + ac
     array = array[:64]
     if len(array) < 64:
         array.extend([0] * (64 - len(array)))
     return np.array(array, dtype=np.int32)
 
 def inverse_zigzag(array):
-        if array.shape != (64,) or array.dtype != np.int32:
-            raise ValueError("Mảng phải có shape (64,) và dtype int32")
-        zigzag_indices = np.array([
-            0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
-            12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
-            35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
-            58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
-        ])
-        block = np.zeros(64, dtype=np.int32)
-        block[zigzag_indices] = array
-        return block.reshape(8, 8)
+    if array.shape != (64,) or array.dtype != np.int32:
+        raise ValueError("Mảng phải có shape (64,) và dtype int32")
+    zigzag_indices = np.array([
+        0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
+        12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
+        35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
+        58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
+    ])
+    block = np.zeros(64, dtype=np.int32)
+    block[zigzag_indices] = array
+    return block.reshape(8, 8)
