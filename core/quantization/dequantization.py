@@ -50,25 +50,24 @@ def adjust_quant_tables(quality):
 
 def optimize_dequantization_for_speed(quant_blocks, quality=50):
     """
-    Giải lượng tử hóa nhanh cho tất cả các khối lượng tử.
-    Trả về các hệ số DCT đã được scale lại.
+    Giải lượng tử hóa toàn bộ khối lượng tử, hỗ trợ ảnh xám (4D) và ảnh màu (5D), dùng vector hóa.
     """
     if quant_blocks.ndim not in (4, 5) or quant_blocks.shape[-2:] != (8, 8):
-        raise ValueError("quant_blocks phải là mảng 4D (h, w, 8, 8) hoặc 5D (c, h, w, 8, 8)")
+        raise ValueError("quant_blocks phải là mảng 4D (h,w,8,8) hoặc 5D (c,h,w,8,8)")
     if not 1 <= quality <= 100:
         raise ValueError("Hệ số chất lượng phải từ 1 đến 100")
     
     y_quant, c_quant = adjust_quant_tables(quality)
 
     if quant_blocks.ndim == 4:
-        # Ảnh xám
         return (quant_blocks * y_quant).astype(np.float32)
-    
-    # Ảnh màu: [Y, Cb, Cr]
+
+    # Ảnh màu
+    c = quant_blocks.shape[0]
     dct_blocks = np.empty_like(quant_blocks, dtype=np.float32)
-    dct_blocks[0] = (quant_blocks[0] * y_quant).astype(np.float32)
-    dct_blocks[1] = (quant_blocks[1] * c_quant).astype(np.float32)
-    dct_blocks[2] = (quant_blocks[2] * c_quant).astype(np.float32)
+
+    for ch in range(c):
+        q = y_quant if ch == 0 else c_quant
+        dct_blocks[ch] = (quant_blocks[ch] * q).astype(np.float32)
 
     return dct_blocks
-

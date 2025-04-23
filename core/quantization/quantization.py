@@ -51,39 +51,30 @@ def adjust_quant_tables(quality):
 
 def optimize_quantization_for_speed(dct_blocks, quality=50):
     """
-    Lượng tử hóa vector hóa cho tất cả các khối DCT.
-    
-    Parameters:
-    -----------
-    dct_blocks : ndarray
-        - 4D: shape (h, w, 8, 8) cho ảnh xám
-        - 5D: shape (c, h, w, 8, 8) cho ảnh màu
-        dtype=float32
-    quality : int
-        Hệ số chất lượng từ 1 đến 100, default=50
-    
-    Returns:
-    --------
-    ndarray
-        Các khối lượng tử hóa, shape giống đầu vào, dtype=int32
-    
-    Raises:
-    -------
-    ValueError
-        Nếu shape không đúng hoặc quality ngoài [1, 100]
+    Lượng tử hóa toàn bộ khối DCT, hỗ trợ ảnh xám (4D) và ảnh màu (5D), dùng vector hóa.
     """
     if dct_blocks.ndim not in (4, 5) or dct_blocks.shape[-2:] != (8, 8):
-        raise ValueError("dct_blocks phải là mảng 4D (h, w, 8, 8) hoặc 5D (c, h, w, 8, 8)")
+        raise ValueError("dct_blocks phải là mảng 4D (h,w,8,8) hoặc 5D (c,h,w,8,8)")
     if not 1 <= quality <= 100:
         raise ValueError("Hệ số chất lượng phải từ 1 đến 100")
     
     y_quant, c_quant = adjust_quant_tables(quality)
-    quant_blocks = np.zeros_like(dct_blocks, dtype=np.int32)
-    
+
+    # Dùng float32 cho chia, sau đó ép về int32
+    dct_blocks = dct_blocks.astype(np.float32)
+
     if dct_blocks.ndim == 4:
-        quant_blocks = np.round(dct_blocks / y_quant).astype(np.int32)
+        # ảnh xám: toàn bộ khối dùng y_quant
+        quant = np.round(dct_blocks / y_quant).astype(np.int32)
     else:
-        quant_blocks[0] = np.round(dct_blocks[0] / y_quant).astype(np.int32)
-        quant_blocks[1:] = np.round(dct_blocks[1:] / c_quant).astype(np.int32)
-    
-    return quant_blocks
+        # ảnh màu: mỗi channel dùng quant khác nhau
+        c, h, w = dct_blocks.shape[:3]
+        quant = np.empty_like(dct_blocks, dtype=np.int32)
+
+        for ch in range(c):
+            q = y_quant if ch == 0 else c_quant  # Y dùng y_quant, còn lại dùng c_quant
+            # Broadcasting tự động
+            quant[ch] = np.round(dct_blocks[ch] / q).astype(np.int32)
+
+    return quant
+

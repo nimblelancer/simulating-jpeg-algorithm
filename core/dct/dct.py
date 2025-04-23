@@ -47,25 +47,11 @@ def apply_dct_to_image(image_blocks):
         raise ValueError("Giá trị pixel phải nằm trong [0, 255] trước level-shift")
 
     blocks = image_blocks.astype(np.float32)
-    dct_blocks = np.zeros_like(blocks, dtype=np.float32)
+    shape = blocks.shape
+    flat_blocks = blocks.reshape(-1, 8, 8)
 
-    # Hàm xử lý từng block
-    def process_block(b):
-        return dct_2d_separable(b)
-
-    if blocks.ndim == 4:
-        h, w = blocks.shape[:2]
-        for i in range(h):
-            for j in range(w):
-                dct_blocks[i, j] = process_block(blocks[i, j])
-    else:
-        c, h, w = blocks.shape[:3]
-        for ch in range(c):
-            for i in range(h):
-                for j in range(w):
-                    dct_blocks[ch, i, j] = process_block(blocks[ch, i, j])
-
-    return dct_blocks
+    dct_flat = np.stack([dct_2d_separable(b) for b in flat_blocks])
+    return dct_flat.reshape(shape)
 
 def idct_1d(vector):
     """
@@ -98,7 +84,7 @@ def idct_2d_separable(block):
     result = np.apply_along_axis(idct_1d, 1, temp)
 
     # Cộng lại 128 (level-shift ngược) → clip giá trị
-    return np.clip(result + 128.0, 0, 255).astype(np.float32)
+    return np.clip(np.round(result + 128.0), 0, 255).astype(np.float32)
 
 
 def apply_idct_to_image(dct_blocks):
@@ -108,19 +94,9 @@ def apply_idct_to_image(dct_blocks):
     if dct_blocks.ndim not in (4, 5) or dct_blocks.shape[-2:] != (8, 8):
         raise ValueError("dct_blocks phải là mảng 4D hoặc 5D với block size 8x8")
 
-    result = np.empty_like(dct_blocks, dtype=np.float32)
+    blocks = dct_blocks.astype(np.float32)
+    shape = blocks.shape
+    flat_blocks = blocks.reshape(-1, 8, 8)
 
-    if dct_blocks.ndim == 4:
-        h, w = dct_blocks.shape[:2]
-        for i in range(h):
-            for j in range(w):
-                result[i, j] = idct_2d_separable(dct_blocks[i, j])
-        return result
-
-    # 5D: ảnh màu
-    c, h, w = dct_blocks.shape[:3]
-    for ch in range(c):
-        for i in range(h):
-            for j in range(w):
-                result[ch, i, j] = idct_2d_separable(dct_blocks[ch, i, j])
-    return result
+    idct_flat = np.stack([idct_2d_separable(b) for b in flat_blocks])
+    return idct_flat.reshape(shape)

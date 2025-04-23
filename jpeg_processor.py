@@ -82,9 +82,11 @@ class JPEGProcessor:
         
         # Bước 1: Chuyển RGB sang YCbCr nếu là ảnh màu
         if image.ndim == 3:
+            print(" Start RGB to YCbCr")
             image = rgb_to_ycbcr(image)
             self.intermediates['ycbcr'] = image.copy()
             # np.save("encode_step1_ycbcr.npy", image)
+        print(" Done RGB to YCbCr")
         
         # Bước 2: Padding ảnh và chia thành các khối 8x8
         image = pad_image_to_multiple_of_8(image)
@@ -108,7 +110,7 @@ class JPEGProcessor:
         self.intermediates['quantized'] = quant_blocks.copy()
         # np.save("encode_step4_quantized.npy", quant_blocks)
         save_matrix_sample(quant_blocks, "encode_step4_quantized_sample.txt")
-        
+        # Mới kiểm tra đến đây
         # Bước 5: Zigzag và RLE
         rle_data = apply_zigzag_and_rle(quant_blocks)
         self.intermediates['rle'] = rle_data.copy()
