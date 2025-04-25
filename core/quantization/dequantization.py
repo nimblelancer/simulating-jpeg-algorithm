@@ -42,8 +42,8 @@ def adjust_quant_tables(quality):
     else:
         scale = 200 - 2 * quality
 
-    y_quant = np.clip(np.floor((y_table * scale + 50) / 100), 1, 255).astype(np.uint8)
-    c_quant = np.clip(np.floor((c_table * scale + 50) / 100), 1, 255).astype(np.uint8)
+    y_quant = np.clip(np.floor((y_table * scale + 50) / 100), 1, 255)
+    c_quant = np.clip(np.floor((c_table * scale + 50) / 100), 1, 255)
 
     _quant_table_cache[quality] = (y_quant, c_quant)
     return y_quant, c_quant

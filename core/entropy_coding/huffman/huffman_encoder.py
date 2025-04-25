@@ -92,9 +92,6 @@ def build_huffman_codes(root):
     traverse(root, '')
     return codes
 
-def safe_bit_length(x):
-    return int(x).bit_length() if x != 0 else 0
-
 def huffman_encode(data, dc_codes, ac_codes):
     """
     Mã hóa dữ liệu sử dụng mã Huffman riêng cho DC và AC.
@@ -128,50 +125,44 @@ def huffman_encode(data, dc_codes, ac_codes):
     if not data or not dc_codes or not ac_codes:
         raise ValueError("Dữ liệu và bảng mã phải không rỗng")
 
-    bitstring = ""
+    bits = []
+    is_color = isinstance(data[0], (list, tuple)) and isinstance(data[0][0], tuple)
 
-    if isinstance(data[0], list):  # Ảnh màu
+    if is_color:  # ảnh màu
         for channel in data:
             for dc, ac in channel:
                 dc_size = safe_bit_length(dc)
-                if dc_size not in dc_codes:
-                    raise ValueError(f"DC size {dc_size} không có trong bảng mã")
-                bitstring += dc_codes[dc_size]
+                bits.append(dc_codes[dc_size])
                 if dc_size > 0:
-                    bitstring += encode_magnitude(dc, dc_size)
+                    bits.append(encode_magnitude(dc, dc_size))
 
                 for run, value in ac:
                     size = safe_bit_length(value)
                     key = (run, size)
-                    if key not in ac_codes:
-                        raise ValueError(f"AC key {key} không có trong bảng mã")
-                    bitstring += ac_codes[key]
+                    bits.append(ac_codes[key])
                     if size > 0:
-                        bitstring += encode_magnitude(value, size)
+                        bits.append(encode_magnitude(value, size))
 
                 if not ac or ac[-1] != (0, 0):
-                    bitstring += ac_codes[(0, 0)]
-
-    else:  # Ảnh xám
+                    bits.append(ac_codes[(0, 0)])
+    else:  # ảnh xám
         for dc, ac in data:
             dc_size = safe_bit_length(dc)
-            if dc_size not in dc_codes:
-                raise ValueError(f"DC size {dc_size} không có trong bảng mã")
-            bitstring += dc_codes[dc_size]
+            bits.append(dc_codes[dc_size])
             if dc_size > 0:
-                bitstring += encode_magnitude(dc, dc_size)
+                bits.append(encode_magnitude(dc, dc_size))
 
             for run, value in ac:
                 size = safe_bit_length(value)
                 key = (run, size)
-                if key not in ac_codes:
-                    raise ValueError(f"AC key {key} không có trong bảng mã")
-                bitstring += ac_codes[key]
+                bits.append(ac_codes[key])
                 if size > 0:
-                    bitstring += encode_magnitude(value, size)
+                    bits.append(encode_magnitude(value, size))
 
             if not ac or ac[-1] != (0, 0):
-                bitstring += ac_codes[(0, 0)]
+                bits.append(ac_codes[(0, 0)])
+
+    bitstring = ''.join(bits)
 
     # Chuyển bitstring thành bytes
     byte_array = []
@@ -182,62 +173,4 @@ def huffman_encode(data, dc_codes, ac_codes):
         byte_array.append(int(byte_str, 2))
 
     return bytes(byte_array), len(bitstring)
-
-def apply_huffman_to_encoded_data(encoded_blocks):
-    """
-    Áp dụng mã hóa Huffman cho dữ liệu sau zigzag và RLE.
     
-    Parameters:
-    -----------
-    encoded_blocks : list
-        List từ apply_zigzag_and_rle: [channel][block] = (dc, ac) hoặc [block] = (dc, ac)
-    
-    Returns:
-    --------
-    dict
-        {
-            'encoded_data': bytes,
-            'dc_codes': dict,
-            'ac_codes': dict,
-            'shape': tuple (h, w) hoặc (c, h, w),
-            'total_bits': int
-        }
-    
-    Raises:
-    -------
-    ValueError
-        Nếu dữ liệu đầu vào không hợp lệ
-    """
-    if not encoded_blocks or not isinstance(encoded_blocks, list):
-        raise ValueError("encoded_blocks phải là list không rỗng")
-    
-    # Xác định shape
-    if isinstance(encoded_blocks[0], list):
-        c = len(encoded_blocks)
-        h = w = int((len(encoded_blocks[0]) ** 0.5))
-        shape = (c, h, w)
-    else:
-        h = w = int((len(encoded_blocks) ** 0.5))
-        shape = (h, w)
-    
-    # Bảng tần suất
-    dc_freq, ac_freq = build_frequency_table(encoded_blocks)
-    
-    # Cây Huffman
-    dc_tree = build_huffman_tree(dc_freq)
-    ac_tree = build_huffman_tree(ac_freq)
-    
-    # Bảng mã
-    dc_codes = build_huffman_codes(dc_tree)
-    ac_codes = build_huffman_codes(ac_tree)
-    
-    # Mã hóa
-    encoded_data, total_bits = huffman_encode(encoded_blocks, dc_codes, ac_codes)
-    
-    return {
-        'encoded_data': encoded_data,
-        'dc_codes': dc_codes,
-        'ac_codes': ac_codes,
-        'shape': shape,
-        'total_bits': total_bits
-    }

@@ -2,8 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import os
-from utils.image_io import read_image, save_compressed_file
-from utils.metrics import calculate_psnr
 from core.color_processing.color_transform import rgb_to_ycbcr, ycbcr_to_rgb
 from core.color_processing.subsampling import apply_chroma_subsampling
 from core.dct.block_processing import pad_image_to_multiple_of_8, split_into_blocks, merge_blocks
@@ -89,8 +87,12 @@ class JPEGProcessor:
         print(" Done RGB to YCbCr")
         
         # Bước 2: Padding ảnh và chia thành các khối 8x8
+        print(" Start padding image")
         image = pad_image_to_multiple_of_8(image)
+        print(" Done padding image")
+        print(" Start split into blocks")
         blocks = split_into_blocks(image)
+        print(" Done split into blocks")
         if blocks.ndim == 4:
             num_blocks = blocks.shape[0] * blocks.shape[1]  # ảnh xám
         else:
@@ -100,29 +102,43 @@ class JPEGProcessor:
         # np.save("encode_step2_blocks.npy", blocks)
         
         # Bước 3: DCT
+        print(" Start DCT")
         dct_blocks = apply_dct_to_image(blocks)
+        print(" Done DCT")
         self.intermediates['dct'] = dct_blocks.copy()
         # np.save("encode_step3_dct.npy", dct_blocks)
         # save_matrix_sample(dct_blocks, "encode_step3_dct_sample.txt")
         
         # Bước 4: Lượng tử hóa
+        print(" Start Quantization")
         quant_blocks = optimize_quantization_for_speed(dct_blocks, self.quality)
+        print(" Done Quantization")
         self.intermediates['quantized'] = quant_blocks.copy()
         # np.save("encode_step4_quantized.npy", quant_blocks)
         save_matrix_sample(quant_blocks, "encode_step4_quantized_sample.txt")
         # Mới kiểm tra đến đây
         # Bước 5: Zigzag và RLE
+        print(" Start Zigzag và RLE")
         rle_data = apply_zigzag_and_rle(quant_blocks)
+        print(" Done Zigzag và RLE")
         self.intermediates['rle'] = rle_data.copy()
         # save_rle_sample(rle_data, "encode_step5_rle.txt")
 
         # Bước 6: Huffman
-        dc_freq, ac_freq = build_frequency_table(rle_data)
+        print(" Start Huffman encode")
+        # Nếu ảnh màu:
+        if isinstance(rle_data[0], list):  # Ảnh màu
+            flat_rle = [item for channel in rle_data for item in channel]
+        else:
+            flat_rle = rle_data  # Ảnh xám
+
+        dc_freq, ac_freq = build_frequency_table(flat_rle)
         dc_tree = build_huffman_tree(dc_freq)
         ac_tree = build_huffman_tree(ac_freq)
         dc_codes = build_huffman_codes(dc_tree)
         ac_codes = build_huffman_codes(ac_tree)
         encoded_data, total_bits = huffman_encode(rle_data, dc_codes, ac_codes)
+        print(" Done Huffman encode")
         # with open("encode_step6_dc_codes.json", "w") as f:
         #     json.dump(stringify_keys(dc_codes), f, indent=2)
         # with open("encode_step6_ac_codes.json", "w") as f:
@@ -180,8 +196,15 @@ class JPEGProcessor:
             raise ValueError("shape phải là (h, w) hoặc (c, h, w)")
         
         # Bước 1: Giải mã Huffman
-        image_height, image_width = padded_shape
-        rle_data = huffman_decode_bitstring(encoded_data, dc_codes, ac_codes, total_bits, image_width, image_height)
+        if len(padded_shape) == 2:
+            image_height, image_width = padded_shape
+            num_channels = 1
+        elif len(padded_shape) == 3:
+            _, image_height, image_width = padded_shape
+            num_channels = 3
+        else:
+            raise ValueError("padded_shape không hợp lệ")
+        rle_data = huffman_decode_bitstring(encoded_data, dc_codes, ac_codes, total_bits, image_width, image_height, num_channels)
         self.intermediates['rle'] = rle_data
         # with open("decompress_step1_rle.txt", "w") as f:
         #     for idx, (dc, ac) in enumerate(rle_data):
@@ -232,6 +255,8 @@ class JPEGProcessor:
         if image.ndim == 3:
             image = ycbcr_to_rgb(image)
             self.intermediates['rgb'] = image.copy()
+            print("Pixel values range:", np.min(image), np.max(image))
+            return image
         print("Image shape:", image.shape)
         return image.astype(np.uint8)
 

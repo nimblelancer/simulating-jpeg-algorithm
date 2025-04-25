@@ -6,3 +6,6 @@ streamlit-option-menu
 plotly
 pandas
 seaborn
+scikit-image
+streamlit-image-comparison
+scipy
