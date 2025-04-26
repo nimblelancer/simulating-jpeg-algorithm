@@ -6,7 +6,7 @@ from PIL import Image
 
 BASE_DIR = os.path.join("assets", "images", "processing")
 
-def get_image_size_info(original_path: str, compressed_path: str) -> dict:
+def get_image_size_info(original_path: str, compressed_path: str, decompressed_path: str) -> dict:
     """
     Trả về kích thước file ảnh và bitrate cho ảnh gốc và ảnh nén.
     - size_bytes: kích thước file (byte)
@@ -40,20 +40,32 @@ def get_image_size_info(original_path: str, compressed_path: str) -> dict:
         size_bytes = os.path.getsize(compressed_path)
         size_kb = size_bytes / 1024
 
+        result["compressed"] = {
+                "size_bytes": size_bytes,
+                "size_kb": round(size_kb, 2)
+            }
+    else:
+        result["compressed"] = {"error": "Compressed file not found"}
+
+    # Kiểm tra kích thước và bitrate ảnh sau giải nén
+    if os.path.isfile(decompressed_path):
+        size_bytes = os.path.getsize(decompressed_path)
+        size_kb = size_bytes / 1024
+
         try:
-            img = Image.open(compressed_path)
+            img = Image.open(decompressed_path)
             width, height = img.size
             num_pixels = width * height
             bitrate = (size_bytes * 8) / num_pixels  # bits per pixel
-            result["compressed"] = {
+            result["decompressed"] = {
                 "size_bytes": size_bytes,
                 "size_kb": round(size_kb, 2),
                 "bitrate_bpp": round(bitrate, 3),
             }
         except Exception as e:
-            result["compressed"] = {"error": f"Could not open compressed image: {str(e)}"}
+            result["decompressed"] = {"error": f"Could not open original image: {str(e)}"}
     else:
-        result["compressed"] = {"error": "Compressed file not found"}
+        result["decompressed"] = {"error": "Original file not found"}
 
     return result
 
@@ -83,26 +95,33 @@ def get_compression_ratio(original_path: str, compressed_path: str) -> dict:
         "compression_ratio": round(ratio, 2),
     }
 
-def calculate_image_metrics(original_path: str, compressed_path: str) -> dict:
+def calculate_image_metrics(original_path: str, decompressed_path: str) -> dict:
     """
-    Tính SSIM và PSNR giữa ảnh gốc và ảnh nén.
+    Tính SSIM và PSNR giữa ảnh gốc và ảnh sau giải nén.
     Cần đảm bảo ảnh cùng kích thước và cùng mode (RGB hoặc Grayscale).
     """
 
-    if not os.path.isfile(original_path) or not os.path.isfile(compressed_path):
+    if not os.path.isfile(original_path) or not os.path.isfile(decompressed_path):
         return {"error": "One or both image files not found."}
 
     try:
-        original = Image.open(original_path).convert("RGB")
-        compressed = Image.open(compressed_path).convert("RGB")
-        original_np = np.array(original)
-        compressed_np = np.array(compressed)
+        original_img = Image.open(original_path)
+        decompressed_img = Image.open(decompressed_path)
 
-        if original_np.shape != compressed_np.shape:
+        if original_img.mode != decompressed_img.mode:
+            return {"error": "Image modes do not match."}
+        original = np.array(original_img)
+        decompressed = np.array(decompressed_img)
+
+        if original.shape != decompressed.shape:
             return {"error": "Images must have the same shape for SSIM/PSNR."}
 
-        ssim_val = ssim(original_np, compressed_np, channel_axis=-1, data_range=255)
-        psnr_val = psnr(original_np, compressed_np, data_range=255)
+        if original_img.mode == "RGB":
+            ssim_val = ssim(original, decompressed, channel_axis=-1, data_range=255)
+        else:  # Grayscale, shape (H, W)
+            ssim_val = ssim(original, decompressed, data_range=255)
+
+        psnr_val = psnr(original, decompressed, data_range=255)
 
         return {
             "ssim": round(ssim_val, 4),
@@ -112,10 +131,10 @@ def calculate_image_metrics(original_path: str, compressed_path: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-def analyze_compression(original_path: str, compressed_path: str) -> dict:
-    size_info = get_image_size_info(original_path, compressed_path)
+def analyze_compression(original_path: str, compressed_path: str, decompressed_path: str) -> dict:
+    size_info = get_image_size_info(original_path, compressed_path, decompressed_path)
     ratio = get_compression_ratio(original_path, compressed_path)
-    metrics = calculate_image_metrics(original_path, compressed_path)
+    metrics = calculate_image_metrics(original_path, decompressed_path)
 
     return {
         **size_info,

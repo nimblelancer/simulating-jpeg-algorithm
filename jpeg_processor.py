@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import os
+from utils.image_io import save_image, save_npy, save_encoded_bytes_to_jpg
 from core.color_processing.color_transform import rgb_to_ycbcr, ycbcr_to_rgb
 from core.color_processing.subsampling import apply_chroma_subsampling
 from core.dct.block_processing import pad_image_to_multiple_of_8, split_into_blocks, merge_blocks
@@ -12,23 +13,6 @@ from core.entropy_coding.zigzag_rle import apply_zigzag_and_rle, apply_inverse_z
 from core.entropy_coding.huffman.huffman_encoder import build_frequency_table, build_huffman_tree, build_huffman_codes, huffman_encode
 from core.entropy_coding.huffman.huffman_decoder import huffman_decode_bitstring
 from PIL import Image
-
-def save_matrix_sample(blocks, filename, num_blocks=100):
-        with open(filename, "w") as f:
-            flat_blocks = blocks.reshape(-1, 8, 8)
-            for i in range(min(num_blocks, flat_blocks.shape[0])):
-                f.write(f"Block {i}:\n")
-                np.savetxt(f, flat_blocks[i], fmt="%.2f")
-                f.write("\n")
-
-def save_rle_sample(rle_data, filename, num_blocks=5):
-    with open(filename, "w") as f:
-        for i, (dc, ac) in enumerate(rle_data[:num_blocks]):
-            f.write(f"Block {i}:\n")
-            f.write(f"  DC: {dc}\n")
-            f.write(f"  AC: {ac}\n\n")
-def stringify_keys(d):
-    return {str(k): v for k, v in d.items()}
 
 class JPEGProcessor:
     """
@@ -45,8 +29,6 @@ class JPEGProcessor:
         if not 1 <= quality <= 100:
             raise ValueError("Hệ số chất lượng phải từ 1 đến 100")
         self.quality = quality
-        self.intermediates = {}
-
 
     def encode_pipeline(self, image):
         """
@@ -69,21 +51,19 @@ class JPEGProcessor:
                 'intermediates': dict
             }
         """
-        self.intermediates = {}
         
         # Kiểm tra đầu vào
         if image.ndim not in (2, 3):
             raise ValueError("Ảnh phải là mảng 2D (xám) hoặc 3D (màu)")
         if image.max() > 255 or image.min() < 0:
             raise ValueError("Giá trị pixel phải nằm trong [0, 255]")
-        self.intermediates['input'] = image.copy()
+        save_image(image, "original.png")
         
         # Bước 1: Chuyển RGB sang YCbCr nếu là ảnh màu
         if image.ndim == 3:
             print(" Start RGB to YCbCr")
             image = rgb_to_ycbcr(image)
-            self.intermediates['ycbcr'] = image.copy()
-            # np.save("encode_step1_ycbcr.npy", image)
+            save_image(image, "encode_step_ycbcr.png")
         print(" Done RGB to YCbCr")
         
         # Bước 2: Padding ảnh và chia thành các khối 8x8
@@ -93,36 +73,29 @@ class JPEGProcessor:
         print(" Start split into blocks")
         blocks = split_into_blocks(image)
         print(" Done split into blocks")
+        save_npy(blocks, "encode_step_blocks.npy") 
         if blocks.ndim == 4:
             num_blocks = blocks.shape[0] * blocks.shape[1]  # ảnh xám
         else:
             num_blocks = blocks.shape[1] * blocks.shape[2]  # ảnh màu
 
-        self.intermediates['blocks'] = blocks.copy()
-        # np.save("encode_step2_blocks.npy", blocks)
-        
         # Bước 3: DCT
         print(" Start DCT")
         dct_blocks = apply_dct_to_image(blocks)
         print(" Done DCT")
-        self.intermediates['dct'] = dct_blocks.copy()
-        # np.save("encode_step3_dct.npy", dct_blocks)
-        # save_matrix_sample(dct_blocks, "encode_step3_dct_sample.txt")
+        save_npy(dct_blocks, "encode_step_dct.npy")
         
         # Bước 4: Lượng tử hóa
         print(" Start Quantization")
         quant_blocks = optimize_quantization_for_speed(dct_blocks, self.quality)
         print(" Done Quantization")
-        self.intermediates['quantized'] = quant_blocks.copy()
-        # np.save("encode_step4_quantized.npy", quant_blocks)
-        save_matrix_sample(quant_blocks, "encode_step4_quantized_sample.txt")
-        # Mới kiểm tra đến đây
+        save_npy(quant_blocks, "encode_step_quantized.npy")
+
         # Bước 5: Zigzag và RLE
         print(" Start Zigzag và RLE")
-        rle_data = apply_zigzag_and_rle(quant_blocks)
+        rle_data, dc_original = apply_zigzag_and_rle(quant_blocks)
         print(" Done Zigzag và RLE")
-        self.intermediates['rle'] = rle_data.copy()
-        # save_rle_sample(rle_data, "encode_step5_rle.txt")
+        save_npy(rle_data, "encode_step_rle.npy", allow_object=True)
 
         # Bước 6: Huffman
         print(" Start Huffman encode")
@@ -138,14 +111,8 @@ class JPEGProcessor:
         dc_codes = build_huffman_codes(dc_tree)
         ac_codes = build_huffman_codes(ac_tree)
         encoded_data, total_bits = huffman_encode(rle_data, dc_codes, ac_codes)
+        save_encoded_bytes_to_jpg(encoded_data, "compressed_image.jpg")
         print(" Done Huffman encode")
-        # with open("encode_step6_dc_codes.json", "w") as f:
-        #     json.dump(stringify_keys(dc_codes), f, indent=2)
-        # with open("encode_step6_ac_codes.json", "w") as f:
-        #     json.dump(stringify_keys(ac_codes), f, indent=2)
-        # with open("encode_step6_encoded_bits.txt", "w") as f:
-        #     f.write(f"Total bits: {total_bits}\n")
-        #     f.write(f"First 512 bits: {''.join(format(byte, '08b') for byte in encoded_data[:64])}\n")
 
         # Lưu shape
         if blocks.ndim == 4:
@@ -161,7 +128,7 @@ class JPEGProcessor:
             'ac_codes': ac_codes,
             'padded_shape': padded_shape,
             'total_bits': total_bits,
-            'intermediates': self.intermediates
+            'encoded_dc_original': dc_original
         }
 
     def decode_pipeline(self, encoded_data, dc_codes, ac_codes, padded_shape, total_bits, original_shape):
@@ -187,7 +154,6 @@ class JPEGProcessor:
                 'intermediates': dict
             }
         """
-        self.intermediates = {}
         
         # Kiểm tra đầu vào
         if not encoded_data or not dc_codes or not ac_codes:
@@ -205,118 +171,30 @@ class JPEGProcessor:
         else:
             raise ValueError("padded_shape không hợp lệ")
         rle_data = huffman_decode_bitstring(encoded_data, dc_codes, ac_codes, total_bits, image_width, image_height, num_channels)
-        self.intermediates['rle'] = rle_data
-        # with open("decompress_step1_rle.txt", "w") as f:
-        #     for idx, (dc, ac) in enumerate(rle_data):
-        #         f.write(f"Block {idx}  DC: {dc}\n")
-        #         f.write(f"         AC: {ac}\n\n")
+        save_npy(rle_data, "decode_step_huffman_decode.npy", allow_object=True)
 
         # Bước 2: Giải RLE và zigzag
         quant_blocks = apply_inverse_zigzag_and_rle(rle_data, padded_shape)
-        self.intermediates['quantized'] = quant_blocks.copy()
-        # np.save("decompress_step2_quantized.npy", quant_blocks)
-        flat_q = quant_blocks.reshape(-1, 8, 8)
-        with open("decompress_step2_sample_blocks.txt", "w") as f:
-            for i in range(min(100, flat_q.shape[0])):
-                f.write(f"Block {i}:\n")
-                np.savetxt(f, flat_q[i], fmt="%d")
-                f.write("\n")
+        save_npy(quant_blocks, "decode_step_inverse_zigzag.npy")
 
         # Bước 3: Giải lượng tử hóa
         print("Quality at dequantization:", self.quality)
         dct_blocks = optimize_dequantization_for_speed(quant_blocks, self.quality)
-        self.intermediates['dct'] = dct_blocks.copy()
-
-        # np.save("decompress_step3_dct.npy", dct_blocks)
-        # Sample 5 DCT block
-        # flat_d = dct_blocks.reshape(-1, 8, 8)
-        # with open("decompress_step3_sample_blocks.txt", "w") as f:
-        #     for i in range(min(100, flat_d.shape[0])):
-        #         f.write(f"DCT Block {i}:\n")
-        #         np.savetxt(f, flat_d[i], fmt="%.2f")
-        #         f.write("\n")
+        save_npy(dct_blocks, "decode_step_dequantized.npy")
 
         # Bước 4: IDCT
         pixel_blocks = apply_idct_to_image(dct_blocks)
-        self.intermediates['blocks'] = pixel_blocks.copy()
-
-        # np.save("decompress_step4_pixel_blocks.npy", pixel_blocks)
+        save_npy(pixel_blocks, "decode_step_idct.npy")
 
         # Bước 5: Gộp khối
         image = merge_blocks(pixel_blocks, original_shape)
-        self.intermediates['merged'] = image.copy()
-
-        # merged_img = Image.fromarray(
-        #     image.astype(np.uint8) if image.ndim == 2 else image[:, :, 0].astype(np.uint8)
-        # )
-        # merged_img.save("decompress_step5_merged.png")
 
         # Bước 6: Chuyển YCbCr sang RGB nếu là ảnh màu
         if image.ndim == 3:
             image = ycbcr_to_rgb(image)
-            self.intermediates['rgb'] = image.copy()
             print("Pixel values range:", np.min(image), np.max(image))
+            save_image(image, "decompressed_image.jpg")
             return image
         print("Image shape:", image.shape)
+        save_image(image.astype(np.uint8), "decompressed_image.jpg")
         return image.astype(np.uint8)
-
-        # return {
-        #     'image': image,
-        #     'intermediates': self.intermediates
-        # }
-
-    def save_intermediate_images(self, output_dir):
-        """
-        Lưu kết quả trung gian dưới dạng ảnh để Streamlit visualize.
-        
-        Parameters:
-        -----------
-        output_dir : str
-            Thư mục lưu ảnh
-        """
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        
-        for step, data in self.intermediates.items():
-            if step in ('input', 'ycbcr', 'merged', 'rgb'):
-                plt.imsave(f"{output_dir}/{step}.png", data.astype(np.uint8), cmap='gray' if data.ndim == 2 else None)
-            elif step == 'blocks':
-                if data.ndim == 4:
-                    img = merge_blocks(data)
-                    plt.imsave(f"{output_dir}/{step}.png", img.astype(np.uint8), cmap='gray')
-                else:
-                    for ch in range(data.shape[0]):
-                        img = merge_blocks(data[ch])
-                        plt.imsave(f"{output_dir}/{step}_ch{ch}.png", img.astype(np.uint8), cmap='gray')
-            elif step in ('dct', 'quantized'):
-                if data.ndim == 4:
-                    sample = data[0, 0]
-                    plt.figure()
-                    plt.imshow(sample, cmap='hot')
-                    plt.colorbar()
-                    plt.savefig(f"{output_dir}/{step}_sample.png")
-                    plt.close()
-                else:
-                    for ch in range(data.shape[0]):
-                        sample = data[ch, 0, 0]
-                        plt.figure()
-                        plt.imshow(sample, cmap='hot')
-                        plt.colorbar()
-                        plt.savefig(f"{output_dir}/{step}_ch{ch}_sample.png")
-                        plt.close()
-
-    def compare_images(self, img1, img2):
-        """
-        So sánh hai ảnh bằng PSNR.
-        
-        Parameters:
-        -----------
-        img1, img2 : ndarray
-            Hai ảnh cùng shape, dtype=float32, giá trị [0, 255]
-        
-        Returns:
-        --------
-        float
-            Giá trị PSNR (dB)
-        """
-        return calculate_psnr(img1, img2)

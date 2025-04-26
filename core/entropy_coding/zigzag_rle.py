@@ -45,7 +45,7 @@ def apply_zigzag_and_rle(blocks):
         raise ValueError("blocks phải có dtype int32")
 
     result = []
-
+    dc_original = []
     if blocks.ndim == 4:
         h, w = blocks.shape[:2]
         previous_dc = 0
@@ -56,10 +56,12 @@ def apply_zigzag_and_rle(blocks):
                 dc_diff = dc - previous_dc
                 previous_dc = dc
                 result.append((dc_diff, ac))
+                dc_original.append(dc)
     else:
         c, h, w = blocks.shape[:3]
         for ch in range(c):
             channel_result = []
+            channel_dc_original = []
             previous_dc = 0
             for i in range(h):
                 for j in range(w):
@@ -68,9 +70,10 @@ def apply_zigzag_and_rle(blocks):
                     dc_diff = dc - previous_dc
                     previous_dc = dc
                     channel_result.append((dc_diff, ac))
+                    channel_dc_original.append(dc)
             result.append(channel_result)
-
-    return result
+            dc_original.append(channel_dc_original)
+    return result, dc_original
 
 def apply_inverse_zigzag_and_rle(rle_blocks, image_shape):
     if len(image_shape) == 2:

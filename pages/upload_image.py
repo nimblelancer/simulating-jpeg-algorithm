@@ -4,9 +4,10 @@ from PIL import Image
 import io
 import plotly.express as px
 from jpeg_processor import JPEGProcessor
-from utils.image_io import load_uploaded_image, save_image
+from utils.image_io import load_uploaded_image, save_image, clear_processing_folder
 
 def app():
+    clear_processing_folder()
     st.title("📸 Upload Your Image")
     st.write("Upload an image to start the JPEG compression process.")
 
@@ -15,7 +16,6 @@ def app():
     if uploaded_file is not None:
         # Đọc và hiển thị ảnh gốc
         image = load_uploaded_image(uploaded_file)
-        save_image(image, "original.png")
         st.image(image, caption="Original Image", use_container_width=True)
         st.session_state['original_image_path'] = f"assets/images/processing/original.png"
         
@@ -46,6 +46,8 @@ def app():
                 st.session_state['quality_factor'] = quality_factor
                 
                 result = jpeg.encode_pipeline(image)
+                st.session_state['encoded_dc_original'] = result['encoded_dc_original']
+                st.session_state['compressed_image_path'] = f"assets/images/processing/compressed_image.jpg"
                 st.session_state['encoded_data'] = result['encoded_data']
                 st.session_state['dc_codes'] = result['dc_codes']
                 st.session_state['ac_codes'] = result['ac_codes']
@@ -60,6 +62,5 @@ def app():
                 else:
                     decompressed_image = jpeg.decode_pipeline(encoded_data, st.session_state['dc_codes'], st.session_state['ac_codes'], st.session_state['padded_shape'], st.session_state['total_bits'], st.session_state.get('original_shape'))
                     st.image(decompressed_image, caption="Decompressed Image", use_container_width=True)
-                    st.session_state['compressed_image_path'] = f"assets/images/processing/compressed_image.jpg"
-                    save_image(decompressed_image, "compressed_image.jpg")
+                    st.session_state['decompressed_image_path'] = f"assets/images/processing/decompressed_image.jpg"
                     st.success("Decompression completed! Navigate to other pages to explore.")

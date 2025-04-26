@@ -20,15 +20,19 @@ def save_image(image: np.ndarray, filename: str):
     img_pil = Image.fromarray(image)
     img_pil.save(os.path.join(BASE_DIR, filename))
 
-def save_npy(data: np.ndarray, filename: str):
+def save_npy(data: np.ndarray, filename: str, allow_object=False):
     """Lưu dữ liệu trung gian dưới dạng .npy"""
     ensure_dir()
-    np.save(os.path.join(BASE_DIR, filename), data)
-
-def load_npy(filename: str) -> np.ndarray:
-    """Đọc dữ liệu .npy"""
     path = os.path.join(BASE_DIR, filename)
-    return np.load(path)
+    if allow_object:
+        np.save(path, np.array(data, dtype=object))
+    else:
+        np.save(path, np.array(data))
+
+def load_npy(filename: str, allow_pickle: bool = False) -> np.ndarray:
+    """Đọc dữ liệu .npy, có thể bật allow_pickle nếu cần load object array."""
+    path = os.path.join(BASE_DIR, filename)
+    return np.load(path, allow_pickle=allow_pickle)
 
 def load_uploaded_image(uploaded_file) -> np.ndarray:
     """
@@ -82,3 +86,42 @@ def clear_processing_folder():
         file_path = os.path.join(BASE_DIR, filename)
         if os.path.isfile(file_path) and filename.endswith(('.png', '.jpg', '.jpeg', '.npy')):
             os.remove(file_path)
+
+def save_encoded_bytes_to_jpg(encoded_bytes: bytes, filename: str) -> int:
+    """
+    Lưu dữ liệu mã hóa vào file JPG.
+    Trả về số byte đã ghi vào file.
+    """
+    file_path = os.path.join(BASE_DIR, filename)
+    with open(file_path, 'wb') as f:
+        f.write(encoded_bytes)
+    return file_path
+
+def build_huffman_result(dc_codes: dict, ac_codes: dict) -> dict:
+    """
+    Gộp bảng mã Huffman DC và AC thành một dict duy nhất, 
+    định dạng key dễ đọc để hiển thị hoặc lưu trữ.
+    
+    Parameters:
+    -----------
+    dc_codes : dict
+        Bảng mã Huffman cho DC coefficients (key: size, value: code)
+    ac_codes : dict
+        Bảng mã Huffman cho AC coefficients (key: (run, size), value: code)
+    
+    Returns:
+    --------
+    dict
+        Dict chứa tất cả mã Huffman, key dạng 'DC(x)' hoặc 'AC(run,size)'
+    """
+    huffman_result = {}
+
+    # Gộp DC codes
+    for size, code in dc_codes.items():
+        huffman_result[f"DC({size})"] = code
+
+    # Gộp AC codes
+    for (run, size), code in ac_codes.items():
+        huffman_result[f"AC({run},{size})"] = code
+
+    return huffman_result
