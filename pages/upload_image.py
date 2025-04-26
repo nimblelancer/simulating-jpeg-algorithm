@@ -4,10 +4,9 @@ from PIL import Image
 import io
 import plotly.express as px
 from jpeg_processor import JPEGProcessor
-from utils.image_io import load_uploaded_image, save_image, clear_processing_folder
+from utils.image_io import load_uploaded_image, save_image
 
 def app():
-    clear_processing_folder()
     st.title("📸 Upload Your Image")
     st.write("Upload an image to start the JPEG compression process.")
 
