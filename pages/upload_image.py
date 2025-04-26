@@ -4,7 +4,7 @@ from PIL import Image
 import io
 import plotly.express as px
 from jpeg_processor import JPEGProcessor
-from utils.image_io import load_uploaded_image, save_image
+from utils.image_io import load_uploaded_image, save_image, load_image, ensure_dir
 
 def app():
     st.title("📸 Upload Your Image")
@@ -15,6 +15,7 @@ def app():
     if uploaded_file is not None:
         # Đọc và hiển thị ảnh gốc
         image = load_uploaded_image(uploaded_file)
+        is_color_image = image.ndim == 3 and image.shape[2] == 3
         st.image(image, caption="Original Image", use_container_width=True)
         st.session_state['original_image_path'] = f"assets/images/processing/original.png"
         
@@ -43,16 +44,22 @@ def app():
             if st.button("Compress"):
                 st.session_state['original_shape'] = image.shape
                 st.session_state['quality_factor'] = quality_factor
-                
-                result = jpeg.encode_pipeline(image)
-                st.session_state['encoded_dc_original'] = result['encoded_dc_original']
-                st.session_state['compressed_image_path'] = f"assets/images/processing/compressed_image.jpg"
-                st.session_state['encoded_data'] = result['encoded_data']
-                st.session_state['dc_codes'] = result['dc_codes']
-                st.session_state['ac_codes'] = result['ac_codes']
-                st.session_state['padded_shape'] = result['padded_shape']
-                st.session_state['total_bits'] = result['total_bits']
-                st.success("Compression completed! Navigate to other pages to explore.")
+                if is_color_image:
+                    image = Image.open(uploaded_file)
+                    ensure_dir()
+                    image.save("assets/images/processing/decompressed_image.jpg", format="JPEG", quality=quality_factor, optimize=True)
+                    st.image(load_image("decompressed_image.jpg"), caption="Decompressed Image", use_container_width=True)
+                    st.success("JPEG Pipeline completed!")
+                else:
+                    result = jpeg.encode_pipeline(image)
+                    st.session_state['encoded_dc_original'] = result['encoded_dc_original']
+                    st.session_state['compressed_image_path'] = f"assets/images/processing/compressed_image.jpg"
+                    st.session_state['encoded_data'] = result['encoded_data']
+                    st.session_state['dc_codes'] = result['dc_codes']
+                    st.session_state['ac_codes'] = result['ac_codes']
+                    st.session_state['padded_shape'] = result['padded_shape']
+                    st.session_state['total_bits'] = result['total_bits']
+                    st.success("Compression completed! Navigate to other pages to explore.")
         with col_decompress:
             if st.button("Decompress"):
                 encoded_data = st.session_state.get('encoded_data')
