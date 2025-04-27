@@ -3,44 +3,64 @@ import pandas as pd
 import plotly.express as px
 
 def app():
-    st.title("📈 Statistics & Analysis")
-    st.write("Summary of compression results and performance metrics.")
+    st.title("📈 JPEG Compression Analysis")
+    st.write("Summary of PSNR and SSIM over different Quality Factors.")
 
-    # Dữ liệu giả lập
-    mock_data = pd.DataFrame({
-        "Filename": ["image1.jpg", "image2.png"],
-        "Original Size (KB)": [500, 750],
-        "Compressed Size (KB)": [150, 200],
-        "Quality Factor": [75, 90],
-        "PSNR (dB)": [35.2, 38.5],
-        "SSIM": [0.95, 0.97]
-    })
+    # Đọc file CSV thực tế
+    try:
+        data = pd.read_csv("L:\Master\IVP501\simulating-jpeg-algorithm\jpeg_psnr_ssim_results.csv")
+    except FileNotFoundError:
+        st.error("Không tìm thấy file ../jpeg_psnr_ssim_results.csv. Vui lòng kiểm tra lại!")
+        return
 
-    # Bảng kết quả
-    st.subheader("Compression History")
-    st.dataframe(mock_data)
-    # GHI CHÚ: Tích hợp với phần core
-    # Lưu kết quả mỗi lần nén vào một danh sách/df và hiển thị
 
-    # Biểu đồ phân tích
-    st.subheader("Performance Analysis")
+    # Hiển thị bảng dữ liệu
+    st.subheader("Compression Metrics Table")
+    st.dataframe(data)
 
-    fig1 = px.scatter(
-        mock_data,
+    # Vẽ biểu đồ PSNR theo Quality Factor
+    st.subheader("PSNR vs Quality Factor")
+    fig_psnr = px.line(
+        data,
         x="Quality Factor",
-        y="PSNR (dB)",
-        size="Compressed Size (KB)",
-        color="SSIM",
-        title="Quality Factor vs PSNR"
+        y="PSNR",
+        markers=True,
+        title="PSNR (dB) vs Quality Factor",
+        labels={"PSNR": "PSNR (dB)", "Quality Factor": "Quality Factor"},
     )
-    st.plotly_chart(fig1)
+    st.plotly_chart(fig_psnr)
 
-    fig2 = px.bar(
-        mock_data,
-        x="Filename",
-        y="Compressed Size (KB)",
-        title="Compression Ratio by Image"
+    # Vẽ biểu đồ SSIM theo Quality Factor
+    st.subheader("SSIM vs Quality Factor")
+    fig_ssim = px.line(
+        data,
+        x="Quality Factor",
+        y="SSIM",
+        markers=True,
+        title="SSIM vs Quality Factor",
+        labels={"SSIM": "SSIM", "Quality Factor": "Quality Factor"},
     )
-    st.plotly_chart(fig2)
-    # GHI CHÚ: Tích hợp với phần core
-    # Tạo biểu đồ từ dữ liệu thực tế của JPEGProcessor.get_metrics()
+    st.plotly_chart(fig_ssim)
+
+    # Gợi ý thêm: Nếu muốn chọn range Quality Factor để zoom
+    st.subheader("Custom Range Filter")
+    qf_min, qf_max = st.slider(
+        "Select Quality Factor Range:",
+        min_value=int(data["Quality Factor"].min()),
+        max_value=int(data["Quality Factor"].max()),
+        value=(1, 100)
+    )
+
+    filtered_data = data[(data["Quality Factor"] >= qf_min) & (data["Quality Factor"] <= qf_max)]
+
+    st.write(f"Showing results for Quality Factor from {qf_min} to {qf_max}")
+    st.dataframe(filtered_data)
+
+    fig_filtered = px.line(
+        filtered_data,
+        x="Quality Factor",
+        y=["PSNR", "SSIM"],
+        markers=True,
+        title="PSNR and SSIM in Selected Range",
+    )
+    st.plotly_chart(fig_filtered)
