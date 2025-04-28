@@ -8,9 +8,9 @@ def app():
 
     # Đọc file CSV thực tế
     try:
-        data = pd.read_csv("L:\Master\IVP501\simulating-jpeg-algorithm\jpeg_psnr_ssim_results.csv")
+        data = pd.read_csv("jpeg_psnr_ssim_results.csv")
     except FileNotFoundError:
-        st.error("Không tìm thấy file ../jpeg_psnr_ssim_results.csv. Vui lòng kiểm tra lại!")
+        st.error("Không tìm thấy file jpeg_psnr_ssim_results.csv. Vui lòng kiểm tra lại!")
         return
 
 
